@@ -113,6 +113,9 @@ public class DietSetupModSystem : ModSystem
     private static void LoadConfig(ICoreAPI api)
     {
         const string filename = "dietsetup.json";
+        string configPath = Path.Combine(GamePaths.ModConfig, filename);
+        bool fileExisted = File.Exists(configPath);
+
         DietSetupConfig? loaded;
         bool malformed = false;
         try
@@ -124,6 +127,17 @@ public class DietSetupModSystem : ModSystem
             api.Logger.Error("[dietsetup] Failed to parse dietsetup.json, using defaults without overwriting the file: {0}", ex);
             loaded = null;
             malformed = true;
+        }
+
+        // Newtonsoft's JsonConvert.DeserializeObject<T>("") returns null instead of throwing, so
+        // an existing-but-empty (or otherwise null-producing) file looks identical to "file never
+        // existed" to LoadModConfig. Without this check that would silently be treated as a first
+        // run and overwritten with defaults below -- discarding whatever was there before (e.g. a
+        // file truncated by a crash mid-write) with no warning at all, unlike the throwing case above.
+        if (loaded == null && fileExisted && !malformed)
+        {
+            malformed = true;
+            api.Logger.Error("[dietsetup] {0} exists but produced no usable data on parse (empty or unrecognized content) -- using defaults without overwriting the file.", filename);
         }
 
         config = loaded ?? new DietSetupConfig();
