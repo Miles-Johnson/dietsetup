@@ -1,0 +1,16 @@
+{
+  "type": "code",
+  "modid": "dietsetup",
+  "name": "Diet Setup",
+  "authors": [
+    "Question"
+  ],
+  "description": "One-time diet preference setup for new characters. Adds sliders to scale how much satiety/nutrition your character gains from each vanilla food category (Fruit, Vegetable, Protein, Grain, Dairy), so you can build a dedicated carnivore, herbivore, or anything in between.",
+  "version": "1.0.0",
+  "requiredOnClient": true,
+  "requiredOnServer": true,
+  "dependencies": {
+    "game": "1.21.0",
+    "survival": "1.21.0"
+  }
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "Id": "balanced",
+    "NameLangCode": "dietsetup:profile-balanced",
+    "CategoryDefaults": {
+      "Fruit": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
+      "Vegetable": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
+      "Protein": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
+      "Grain": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
+      "Dairy": { "SatietyMult": 0.4, "NutritionMult": 0.4 }
+    }
+  },
+  {
+    "Id": "carnivore",
+    "NameLangCode": "dietsetup:profile-carnivore",
+    "CategoryDefaults": {
+      "Fruit": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
+      "Vegetable": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
+      "Protein": { "SatietyMult": 0.70, "NutritionMult": 0.70 },
+      "Grain": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
+      "Dairy": { "SatietyMult": 0.70, "NutritionMult": 0.70 }
+    }
+  },
+  {
+    "Id": "herbivore",
+    "NameLangCode": "dietsetup:profile-herbivore",
+    "CategoryDefaults": {
+      "Fruit": { "SatietyMult": 0.7, "NutritionMult": 0.7 },
+      "Vegetable": { "SatietyMult": 0.7, "NutritionMult": 0.7 },
+      "Protein": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
+      "Grain": { "SatietyMult": 0.7, "NutritionMult": 0.7 },
+      "Dairy": { "SatietyMult": 0.4, "NutritionMult": 0.4 }
+    }
+  }
+]

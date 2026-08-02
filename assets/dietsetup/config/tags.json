@@ -1,0 +1,8 @@
+{
+  "mushroom": ["game:mushroom-*"],
+  "cheese": ["game:cheese-*"],
+  "bread": ["game:bread-*"],
+  "fat": ["game:fat-*"],
+  "insect": ["game:insect-*"],
+  "egg": ["game:egg-*"]
+}

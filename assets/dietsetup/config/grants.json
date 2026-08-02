@@ -1,0 +1,5 @@
+[
+  { "ItemPattern": "game:redmeat-raw", "Category": "Protein", "BaseSatiety": 30, "Reaction": { "Health": -1.5, "DurationSec": 8, "Ticks": 4 } },
+  { "ItemPattern": "game:poultry-raw", "Category": "Protein", "BaseSatiety": 30, "Reaction": { "Health": -1.5, "DurationSec": 8, "Ticks": 4 } },
+  { "ItemPattern": "game:bushmeat-raw", "Category": "Protein", "BaseSatiety": 30, "Reaction": { "Health": -1.5, "DurationSec": 8, "Ticks": 4 } }
+]
