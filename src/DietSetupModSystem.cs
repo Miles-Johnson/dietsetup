@@ -26,6 +26,14 @@ public class DietSetupModSystem : ModSystem
     public const string AttrConfigured = "dietsetup:configured";
     public const string AttrAllowSelOnce = "dietsetup:allowselonce";
 
+    // Rot-intake accumulator (Phase G3, for rfmechanics' goblin rot aura). Raw value + a
+    // world.Calendar.TotalHours timestamp, not a single number -- lets any external reader
+    // (rfmechanics, via a plain WatchedAttributes.GetDouble, no assembly reference) compute the
+    // live, continuously-decaying value on demand with no tick loop on either side, mirroring
+    // how the game's own transition system is lazy/timestamp-based. See RotIntakeAccrualPatch.
+    public const string AttrRotIntake = "dietsetup:rotIntake";
+    public const string AttrRotIntakeUpdatedHours = "dietsetup:rotIntakeUpdatedHours";
+
     // Old flat-multiplier keys from the pre-rewrite system. Left in place, unread except by
     // DietMigration (which reads them fresh on every resolve for a "legacy_custom" player) and
     // the one-time migration check below -- never deleted, never written to again.
@@ -311,6 +319,7 @@ public class DietSetupModSystem : ModSystem
         RegisterAdminGrantCommand(api);
         RegisterDrainSatietyCommand(api);
         RegisterTagMultCommand(api);
+        RegisterRotIntakeDebugCommand(api);
     }
 
     private void OnPlayerCreate(IServerPlayer byPlayer)
@@ -442,6 +451,38 @@ public class DietSetupModSystem : ModSystem
                 float delta = (float)args[1];
                 caller.Entity.Stats.Set(statKey, "debug", delta, false);
                 return TextCommandResult.Success($"Set {statKey} debug delta to {delta:F2}. Blended value now {caller.Entity.Stats.GetBlended(statKey):F2} (base 1 + delta).");
+            });
+    }
+
+    /// <summary>Debug/testing only: get/set/clear the calling player's raw rot-intake
+    /// accumulator (AttrRotIntake) directly, bypassing needing to eat rotten food repeatedly
+    /// and wait out RotIntakeHalfLifeHours' calendar-time decay to see rfmechanics' goblin
+    /// rot aura respond. Setting also stamps AttrRotIntakeUpdatedHours to "now" so the value
+    /// doesn't immediately start decaying from a stale timestamp the moment it's set. Same
+    /// controlserver bar as /diettagmult -- no legitimate non-debug purpose.</summary>
+    private void RegisterRotIntakeDebugCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietrotintake")
+            .WithDescription("Debug: get/set/clear your own rot-intake accumulator (dietsetup:rotIntake), for testing rfmechanics' goblin rot aura without eating rotten food and waiting for decay.")
+            .RequiresPrivilege(Privilege.controlserver)
+            .WithArgs(api.ChatCommands.Parsers.OptionalFloat("value"))
+            .HandleWith(args =>
+            {
+                IPlayer caller = args.Caller.Player;
+                ITreeAttribute wa = caller.Entity.WatchedAttributes;
+
+                if (args.Parsers[0].IsMissing)
+                {
+                    double nowHours = caller.Entity.World.Calendar.TotalHours;
+                    double lastHours = wa.GetDouble(AttrRotIntakeUpdatedHours, nowHours);
+                    double raw = wa.GetDouble(AttrRotIntake, 0.0);
+                    return TextCommandResult.Success($"{AttrRotIntake}={raw:F4}, elapsed {nowHours - lastHours:F2}h since last write (halfLife={Config.RotIntakeHalfLifeHours:F1}h).");
+                }
+
+                float value = (float)args[0];
+                wa.SetDouble(AttrRotIntake, value);
+                wa.SetDouble(AttrRotIntakeUpdatedHours, caller.Entity.World.Calendar.TotalHours);
+                return TextCommandResult.Success($"Set {AttrRotIntake}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
             });
     }
 
