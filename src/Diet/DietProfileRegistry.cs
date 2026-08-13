@@ -38,22 +38,60 @@ public static class DietProfileRegistry
 
     // Hand-off from ResolveNutritionProperties (which knows a reaction should be a DoT, but only
     // gets to mutate the FoodNutritionProperties clone) to DietEatDoTPatch (which patches
-    // CollectibleObject.tryEatStop and can actually call ReceiveDamage with a Duration). Keyed by
-    // entity so it survives the trip through vanilla's own tryEatStop body without needing to
-    // thread a new parameter through vanilla's method signature.
-    private static readonly Dictionary<long, DietReaction> PendingDoT = new();
+    // CollectibleObject.tryEatStop and can actually call ReceiveDamage with a Duration) and
+    // DietMealEatDoTPatch (same idea for BlockMeal.tryFinishEatMeal). Keyed by entity so it
+    // survives the trip through vanilla's own eat-completion body without needing to thread a new
+    // parameter through vanilla's method signature. A list, not a single value: one bite of a meal
+    // can resolve several ingredients, each queuing its own reaction.
+    private static readonly Dictionary<long, List<DietReaction>> PendingDoT = new();
+    private static readonly List<DietReaction> EmptyDoTList = new();
 
     public static void ClearPendingDoT(long entityId) => PendingDoT.Remove(entityId);
 
-    public static bool TryTakePendingDoT(long entityId, out DietReaction reaction)
+    internal static void AddPendingDoT(long entityId, DietReaction reaction)
     {
-        if (PendingDoT.Remove(entityId, out DietReaction? found))
+        if (!PendingDoT.TryGetValue(entityId, out List<DietReaction>? list))
         {
-            reaction = found;
-            return true;
+            PendingDoT[entityId] = list = new List<DietReaction>();
         }
-        reaction = null!;
-        return false;
+        list.Add(reaction);
+    }
+
+    public static List<DietReaction> TakePendingDoT(long entityId) =>
+        PendingDoT.Remove(entityId, out List<DietReaction>? found) ? found : EmptyDoTList;
+
+    // Hand-off from DietMealNutritionPatch (which resolves one meal ingredient stack at a time,
+    // via BlockMeal.GetIngredientStackNutritionProperties) to DietMealContentNutritionPatch (which
+    // sees the whole ingredient array at once, via BlockMeal.GetContentNutritionProperties, and is
+    // the only place that can compute a reaction's share of the meal). Keyed by entity, one entry
+    // per ingredient stack, in call order -- see DietMealContentNutritionPatch for how it's drained.
+    private static readonly Dictionary<long, List<(float NotionalSatiety, DietReaction? Reaction, bool ReactionSourced)>> MealIngredientContext = new();
+
+    public static void ClearMealIngredientContext(long entityId) => MealIngredientContext.Remove(entityId);
+
+    internal static void AddMealIngredientContext(long entityId, float notionalSatiety, DietReaction? reaction, bool reactionSourced)
+    {
+        if (!MealIngredientContext.TryGetValue(entityId, out var list))
+        {
+            MealIngredientContext[entityId] = list = new();
+        }
+        list.Add((notionalSatiety, reaction, reactionSourced));
+    }
+
+    public static List<(float NotionalSatiety, DietReaction? Reaction, bool ReactionSourced)> TakeMealIngredientContext(long entityId) =>
+        MealIngredientContext.Remove(entityId, out var found) ? found : new();
+
+    // Only the diet-sourced portion of a reaction is ever clamped -- a food's own vanilla Health
+    // value (e.g. a death cap mushroom) is never touched, so it stays exactly as lethal as in the
+    // base game. Callers decide clamp-eligibility themselves (see ResolveNutritionProperties's
+    // reactionSourced out param) since a magnitude computed from vanilla Health should never reach
+    // here in the first place. No-ops for non-negative magnitudes.
+    internal static float ClampReactionMagnitude(Entity forEntity, float magnitude)
+    {
+        if (magnitude >= 0f) return magnitude;
+        float currentHealth = forEntity.GetBehavior<EntityBehaviorHealth>()?.Health ?? 20f;
+        float maxAllowedMagnitude = Math.Max(0f, currentHealth - 2.0f);
+        return Math.Max(magnitude, -maxAllowedMagnitude);
     }
 
     public static void RegisterProfile(DietProfile profile)
@@ -109,14 +147,39 @@ public static class DietProfileRegistry
     private static readonly DietProfile PassThroughProfile = new() { Id = "__passthrough", HiddenFromPicker = true };
 
     /// <summary>Shared resolver called by both the CollectibleObject and BlockLiquidContainerBase
-    /// GetNutritionProperties postfixes. Does exactly two things: fills in a category for items
-    /// vanilla has no nutrition data for (grant rules), and writes reaction damage into Health.
-    /// For every other call -- the overwhelming majority, since most foods are neither granted nor
-    /// reaction-triggering -- it returns vanillaResult completely untouched, with no clone and no
-    /// allocation, since GetNutritionProperties is also hit by GetHeldTpUseAnimation and the
-    /// tooltip path on every single held food item.</summary>
-    public static FoodNutritionProperties? ResolveNutritionProperties(ICoreAPI api, Entity forEntity, CollectibleObject collectible, FoodNutritionProperties? vanillaResult, string defaultProfileId)
+    /// GetNutritionProperties postfixes (queueReaction: true), and by DietMealNutritionPatch for
+    /// individual meal ingredients (queueReaction: false -- meal-wide reaction magnitude is
+    /// computed by DietMealContentNutritionPatch instead, from the notionalSatiety/queuedReaction/
+    /// reactionSourced this method hands back for every ingredient). Does exactly two things: fills
+    /// in a category for items vanilla has no nutrition data for (grant rules), and writes reaction
+    /// damage into Health. For every other call -- the overwhelming majority, since most foods are
+    /// neither granted nor reaction-triggering -- it returns vanillaResult completely untouched,
+    /// with no clone and no allocation, since GetNutritionProperties is also hit by
+    /// GetHeldTpUseAnimation and the tooltip path on every single held food item.
+    ///
+    /// The three out params are deliberately non-optional -- every call site must be touched and
+    /// reviewed, since this method is already-verified production code (see the meal-fix handover
+    /// notes) and a silently-inherited default here would be easy to get wrong:
+    /// - notionalSatiety: this ingredient's satiety as far as a meal-wide weighting computation is
+    ///   concerned -- tag-mult-adjusted but captured *before* a firing reaction would zero it, since
+    ///   weighting off the already-zeroed value would make every reacting ingredient's weight 0.
+    ///   Defaults to vanillaResult's own satiety for every early-return path below, since those all
+    ///   mean "dietsetup doesn't adjust this ingredient" but it must still count toward a meal's
+    ///   satiety total.
+    /// - queuedReaction: the *unclamped* DoT-shaped reaction this call would queue, when one fires
+    ///   with DurationSec > 0. Unclamped deliberately -- the entity-relative safety clamp below is
+    ///   only correct to apply once, after a meal-wide weighted magnitude is known, not per
+    ///   ingredient and then scaled down again.
+    /// - reactionSourced: whether queuedReaction's magnitude came from the diet reaction itself
+    ///   (clamp-eligible) rather than from the food's own inherent vanilla Health value (never
+    ///   clamped, e.g. a death cap mushroom stays exactly as lethal inside a meal as standalone).
+    /// </summary>
+    public static FoodNutritionProperties? ResolveNutritionProperties(ICoreAPI api, Entity forEntity, CollectibleObject collectible, FoodNutritionProperties? vanillaResult, string defaultProfileId, bool queueReaction, out DietReaction? queuedReaction, out float notionalSatiety, out bool reactionSourced)
     {
+        queuedReaction = null;
+        reactionSourced = false;
+        notionalSatiety = vanillaResult?.Satiety ?? 0f;
+
         // Vanilla genuinely calls GetNutritionProperties with a null entity in several real paths
         // (CanSpoil, GetHeldInteractionHelp, BlockMeal.GetContentNutritionFacts). Today the calling
         // postfixes' "forEntity is not EntityPlayer" guard already filters null out before this
@@ -211,6 +274,9 @@ public static class DietProfileRegistry
         // active tag-mult source. If a reaction below zeroes Satiety, multiplying first vs. after
         // makes no observable difference.
         clone.Satiety *= tagMult;
+        // Captured here, not after a firing reaction potentially zeroes Satiety below -- see the
+        // notionalSatiety doc comment on this method for why.
+        notionalSatiety = clone.Satiety;
 
         if (firingReaction != null)
         {
@@ -218,14 +284,14 @@ public static class DietProfileRegistry
             float vanillaHealth = clone.Health;
             // Strict > so an exact tie keeps vanilla's value, never the reaction's.
             float winner = Math.Abs(reactionDamage) > Math.Abs(vanillaHealth) ? reactionDamage : vanillaHealth;
-            if (winner == reactionDamage && winner < 0f)
+            float rawWinner = winner; // pre-clamp, handed to meal-aggregate callers via queuedReaction
+            bool isReactionSourced = winner == reactionDamage;
+            if (isReactionSourced)
             {
                 // Only the diet-sourced portion is clamped -- a food's own vanilla Health value
                 // (e.g. a death cap mushroom) is never touched here, so it stays exactly as lethal
                 // as in the base game.
-                float currentHealth = forEntity.GetBehavior<EntityBehaviorHealth>()?.Health ?? 20f;
-                float maxAllowedMagnitude = Math.Max(0f, currentHealth - 2.0f);
-                winner = Math.Max(winner, -maxAllowedMagnitude);
+                winner = ClampReactionMagnitude(forEntity, winner);
             }
 
             if (reactionFires)
@@ -241,7 +307,12 @@ public static class DietProfileRegistry
                 // Suppress vanilla's own instant ReceiveDamage in tryEatStop -- DietEatDoTPatch
                 // applies this as a damage-over-time effect instead once tryEatStop completes.
                 clone.Health = 0f;
-                PendingDoT[forEntity.EntityId] = new DietReaction { Health = winner, DurationSec = firingReaction.DurationSec, Ticks = firingReaction.Ticks };
+                queuedReaction = new DietReaction { Health = rawWinner, DurationSec = firingReaction.DurationSec, Ticks = firingReaction.Ticks };
+                reactionSourced = isReactionSourced;
+                if (queueReaction)
+                {
+                    AddPendingDoT(forEntity.EntityId, new DietReaction { Health = winner, DurationSec = firingReaction.DurationSec, Ticks = firingReaction.Ticks });
+                }
             }
             else
             {

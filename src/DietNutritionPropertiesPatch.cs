@@ -26,6 +26,8 @@ public static class DietNutritionPropertiesPatch
             return;
         }
 
-        __result = DietProfileRegistry.ResolveNutritionProperties(forEntity.Api, forEntity, __instance, __result, DietSetupModSystem.Config.DefaultProfileId);
+        __result = DietProfileRegistry.ResolveNutritionProperties(
+            forEntity.Api, forEntity, __instance, __result, DietSetupModSystem.Config.DefaultProfileId,
+            queueReaction: true, out _, out _, out _);
     }
 }

@@ -47,18 +47,19 @@ public static class DietEatDoTPatch
             return;
         }
 
-        if (!DietProfileRegistry.TryTakePendingDoT(byEntity.EntityId, out DietReaction reaction))
+        // Standalone eating resolves nutrition exactly once per tryEatStop call (unlike
+        // BlockMeal.tryFinishEatMeal, see DietMealEatDoTPatch), so this list holds at most one
+        // entry -- the foreach reproduces the old single-value behavior exactly.
+        foreach (DietReaction reaction in DietProfileRegistry.TakePendingDoT(byEntity.EntityId))
         {
-            return;
+            byEntity.ReceiveDamage(new DamageSource
+            {
+                Source = EnumDamageSource.Internal,
+                Type = EnumDamageType.Poison,
+                Duration = TimeSpan.FromSeconds(reaction.DurationSec),
+                TicksPerDuration = Math.Max(1, reaction.Ticks),
+                DamageOverTimeTypeEnum = EnumDamageOverTimeEffectType.Poison
+            }, Math.Abs(reaction.Health));
         }
-
-        byEntity.ReceiveDamage(new DamageSource
-        {
-            Source = EnumDamageSource.Internal,
-            Type = EnumDamageType.Poison,
-            Duration = TimeSpan.FromSeconds(reaction.DurationSec),
-            TicksPerDuration = Math.Max(1, reaction.Ticks),
-            DamageOverTimeTypeEnum = EnumDamageOverTimeEffectType.Poison
-        }, Math.Abs(reaction.Health));
     }
 }
