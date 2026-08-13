@@ -31,5 +31,16 @@
       "Grain": { "SatietyMult": 0.7, "NutritionMult": 0.7 },
       "Dairy": { "SatietyMult": 0.4, "NutritionMult": 0.4 }
     }
+  },
+  {
+    "Id": "elf",
+    "NameLangCode": "dietsetup:profile-elf",
+    "CategoryDefaults": {
+      "Fruit": { "SatietyMult": 0.8, "NutritionMult": 0.8 },
+      "Vegetable": { "SatietyMult": 0.75, "NutritionMult": 0.75 },
+      "Protein": { "SatietyMult": 0.75, "NutritionMult": 0.75 },
+      "Grain": { "SatietyMult": 0.75, "NutritionMult": 0.75 },
+      "Dairy": { "SatietyMult": 0.6, "NutritionMult": 0.6 }
+    }
   }
 ]

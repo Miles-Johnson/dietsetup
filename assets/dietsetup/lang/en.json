@@ -4,6 +4,7 @@
     "dietsetup:profile-balanced": "Balanced",
     "dietsetup:profile-carnivore": "Carnivore",
     "dietsetup:profile-herbivore": "Herbivore",
+    "dietsetup:profile-elf": "Elf",
     "dietsetup:noaccess": "You don't have permission to change your diet. An admin needs to grant you access with /dietselgrant.",
     "dietsetup:granted-admin": "Granted {0} one-time permission to reopen the Diet Setup dialog.",
     "dietsetup:granted-target": "An admin has granted you permission to reopen your Diet Setup dialog. Use /dietsel to open it.",

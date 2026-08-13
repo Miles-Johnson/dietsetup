@@ -4,5 +4,6 @@
   "bread": ["game:bread-*"],
   "fat": ["game:fat-*"],
   "insect": ["game:insect-*"],
-  "egg": ["game:egg-*"]
+  "egg": ["game:egg-*"],
+  "preserved": ["game:*-cured", "game:*-smoked", "game:*-dried", "game:pickledvegetable-*", "game:pickledlegume-*"]
 }
