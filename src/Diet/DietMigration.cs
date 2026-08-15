@@ -32,11 +32,9 @@ public static class DietMigration
         profile.CategoryDefaults[category] = new DietCategoryDefault
         {
             SatietyMult = legacySatietyMult,
-            // Mirrors the old system exactly: nutrition-level gain was derived from the same
-            // saturation input as satiety (see the pre-rewrite DietSaturationPatch), so a category
-            // the player had zeroed out always produced zero nutrition too -- this is what keeps a
-            // migrated Carnivore's max-HP bonus split across the same 2 categories it always was,
-            // not silently spread across 5.
+            // Mirrors the pre-rewrite system: nutrition gain derived from the same input as satiety,
+            // so a zeroed category always produced zero nutrition too -- keeps a migrated Carnivore's
+            // max-HP bonus split across the same categories as before, not spread across all 5.
             NutritionMult = legacySatietyMult > 0f ? 1f : 0f,
             Reaction = null
         };

@@ -298,8 +298,6 @@ public class DietSetupModSystem : ModSystem
 
     public void RegisterTag(string tag, string pattern) => DietProfileRegistry.RegisterTag(tag, pattern);
 
-    // ── Server side ──
-
     public override void StartServerSide(ICoreServerAPI api)
     {
         base.StartServerSide(api);
@@ -485,8 +483,6 @@ public class DietSetupModSystem : ModSystem
                 return TextCommandResult.Success($"Set {AttrRotIntake}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
             });
     }
-
-    // ── Client side ──
 
     public override void StartClientSide(ICoreClientAPI api)
     {
