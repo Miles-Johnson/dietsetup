@@ -69,3 +69,34 @@ expect it to evolve.
 Please include: the mod version, your Vintage Story version, whether you're on a dedicated
 server or singleplayer, any other food-related mods installed, and the relevant lines from
 `client-main.log` / the server log (search for `[dietsetup]`).
+
+
+
+Here's the write-up:
+
+Hi, everyone. Diet Setup 1.0.0 is now available for Vintage Story 1.21.0+.
+
+Diet Setup turns food choice into a character-defining decision without touching item balance. Each character picks a diet profile that changes how much satiety and nutrition they get from each vanilla food category — no new items, no recipe changes, just a different lens on the food you already have.
+
+Features
+
+Choose a diet profile at character creation; reopen the picker anytime with /dietsel.
+Four built-in profiles — Balanced, Carnivore, Herbivore, and Elf — each with distinct per-category satiety/nutrition multipliers.
+Eating outside your profile isn't just weaker: Carnivore and Herbivore trigger a damage reaction on incompatible categories, while Carnivore also unlocks raw meat as edible.
+Custom profiles, food tags, and raw-meat grants are fully data-driven (profiles.json, tags.json, grants.json) so pack authors can add their own.
+Race-mod integration hook: any mod can grant a per-tag nutrition multiplier to an entity with a single stat call and zero code dependency on Diet Setup — multipliers stack multiplicatively with the active profile.
+Applies across both solid food and liquid containers.
+Config toggles for enabling the system, auto-prompting new characters, and setting a default profile.
+Diagnostic and admin commands (/diettagmult, /dietdiag, /dietselgrant, /dietdrainsatiety) for testing profiles and race-mod-style grants without a second mod installed.
+Existing characters are unaffected until they opt in. All per-player state is plain data on the entity, so uninstalling is safe — no orphaned dependencies.
+
+Known limitations, disclosed up front: meals don't yet respect diet profiles, modded food items need tag patterns added before they participate, and there's been no dedicated-server or cross-mod compatibility testing yet (ACulinaryArtillery, Expanded Foods, Wildcraft, etc.).
+
+Required on both client and server; mismatched versions are rejected on connect.
+
+Planned next: meal support, and compatibility testing against other food/nutrition mods.
+
+Repo and installation:
+https://github.com/Miles-Johnson/dietsetup
+
+Feedback, testing (especially on dedicated servers), and race-mod integration reports are very welcome.
