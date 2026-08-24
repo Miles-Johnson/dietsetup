@@ -16,7 +16,7 @@
     "CategoryDefaults": {
       "Fruit": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
       "Vegetable": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
-      "Protein": { "SatietyMult": 0.70, "NutritionMult": 0.70 },
+      "Protein": { "SatietyMult": 0.70, "NutritionMult": 0.50 },
       "Grain": { "SatietyMult": 0.0, "NutritionMult": 0.0, "Reaction": { "Health": -2.0, "DurationSec": 4, "Ticks": 4 } },
       "Dairy": { "SatietyMult": 0.70, "NutritionMult": 0.70 }
     }
