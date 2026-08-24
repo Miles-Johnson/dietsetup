@@ -9,25 +9,10 @@ namespace dietsetup;
 
 /// <summary>
 /// Postfix on GlobalConstants.FoodSpoilageSatLossMul -- the single static method every vanilla
-/// eat/drink path (CollectibleObject.tryEatStop, BlockMeal.tryFinishEatMeal, BlockPie's eat path,
-/// BlockLiquidContainerBase's drink path) and the item-description tooltip all call to turn
-/// TransitionLevel into a satiety multiplier. Vanilla's own "extension point" for this
-/// (GlobalConstants.FoodSpoilSatLossMulHandler) is a get-only property that hands back a fresh
-/// lambda on every read -- there is no setter, so it can't actually be overridden; patching the
-/// method itself is the only way in. One patch here covers every food type uniformly instead of
-/// separately patching tryEatStop/tryFinishEatMeal/BlockPie/BlockLiquidContainerBase.
-///
-/// Goblins only: cancels vanilla's own spoilage penalty (Math.Max(0, 1 - spoilState)) outright by
-/// overwriting __result rather than multiplying against it -- stacking the inverse curve on top of
-/// the penalty instead of replacing it would fight it and produce an opaque net result, which the
-/// brief explicitly calls out to avoid.
-///
-/// Composability with GoblinRotEdiblePatch (game:rot flat grant): game:rot's own itemtype JSON
-/// (assets/survival/itemtypes/resource/rot.json) has no Perish transitionableProps, so
-/// UpdateAndGetTransitionState returns null for it and every call site passes spoilState 0f for
-/// game:rot. This curve evaluates to exactly 1.0 at t=0 by construction (both curve shapes), so it
-/// never touches the game:rot flat-grant path regardless of curve shape or max multiplier --
-/// structural, not incidental.
+/// eat/drink path and the tooltip call to turn TransitionLevel into a satiety multiplier (patching
+/// here covers every food type uniformly; vanilla's own extension point has no usable setter).
+/// Goblin-only override and game:rot composability:
+/// notes/dietsetup-patch-internals.md#goblin-satiety-patch--goblininversefreshnesssatietypatchcs.
 /// </summary>
 [HarmonyPatch(typeof(GlobalConstants), nameof(GlobalConstants.FoodSpoilageSatLossMul))]
 public static class GoblinInverseFreshnessSatietyPatch
@@ -38,12 +23,9 @@ public static class GoblinInverseFreshnessSatietyPatch
         DietSetupConfig cfg = DietSetupModSystem.Config;
         if (!cfg.EnableGoblinInverseFreshness) return;
 
-        // ── Goblin identity chain, copied verbatim from rfmechanics' GoblinRotAuraBehavior.IsGoblin
-        // / GoblinRotEdiblePatch -- characterClass null/empty check BEFORE HasTrait is load-bearing,
-        // HasTrait returns true for a null class. Uses byEntity's OWN Api (not a mod-static Api
-        // field) -- RFMechanicsModSystem.Api is confirmed last-writer-wins between client/server in
-        // single-player and must not be used for anything side-sensitive; the entity handed to this
-        // postfix already carries the correct per-side API. ──
+        // Goblin identity chain, copied verbatim from rfmechanics' GoblinRotAuraBehavior.IsGoblin --
+        // characterClass null/empty check BEFORE HasTrait is load-bearing (HasTrait returns true
+        // for a null class). Uses byEntity's own Api, never RFMechanicsModSystem.Api (confirmed last-writer-wins).
         if (byEntity is not EntityPlayer player) return;
 
         string charClass = player.WatchedAttributes.GetString("characterClass");
@@ -62,12 +44,9 @@ public static class GoblinInverseFreshnessSatietyPatch
         __result = ComputeMultiplier(spoilState, cfg);
     }
 
-    /// <summary>Single chokepoint for exemptions. Exempt stacks are left completely untouched
-    /// (postfix returns before overwriting __result), so they keep vanilla's own penalty exactly
-    /// as a non-goblin would see it. Empty GoblinInverseFreshnessExemptCodes (the default) makes
-    /// this always true -- WildcardUtil.Match on an empty array returns false unconditionally, no
-    /// separate length check needed. A future tag-based exemption rule replaces the body of this
-    /// method only; nothing else in this file changes.</summary>
+    /// <summary>Single chokepoint for exemptions -- an exempt stack is left untouched, keeping
+    /// vanilla's own penalty exactly as a non-goblin would see it. Empty array (default) always
+    /// returns true (WildcardUtil.Match on empty is unconditionally false, no length check needed).</summary>
     private static bool AppliesTo(ItemStack stack, DietSetupConfig cfg)
     {
         string? code = stack?.Collectible?.Code?.ToString();
@@ -75,11 +54,9 @@ public static class GoblinInverseFreshnessSatietyPatch
         return !WildcardUtil.Match(cfg.GoblinInverseFreshnessExemptCodes, code);
     }
 
-    /// <summary>t=0 (fresh) always maps to 1.0 for both curve shapes -- fresh food is normal, no
-    /// bonus, and (see class doc comment) this is also what keeps game:rot's flat grant path
-    /// untouched. t=1 (fully rotten) maps to GoblinInverseFreshnessMaxMultiplier. LateWeighted uses
-    /// t^2 so the bonus is concentrated near full decay, matching the rot aura's larder-hold
-    /// ceiling parking food near the top of the range rather than the middle.</summary>
+    /// <summary>t=0 always maps to 1.0 for both curve shapes (also what keeps game:rot's flat
+    /// grant path untouched, see class doc). t=1 maps to GoblinInverseFreshnessMaxMultiplier.
+    /// LateWeighted uses t^2 to concentrate the bonus near full decay.</summary>
     private static float ComputeMultiplier(float spoilState, DietSetupConfig cfg)
     {
         float t = spoilState < 0f ? 0f : (spoilState > 1f ? 1f : spoilState);

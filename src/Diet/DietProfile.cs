@@ -14,9 +14,8 @@ public class DietProfile
     /// DietMigration instead, see DietProfileRegistry.ResolveProfileForEntity).</summary>
     public bool HiddenFromPicker { get; set; }
 
-    /// <summary>Keyed by EnumFoodCategory.ToString() ("Fruit", "Vegetable", "Protein", "Grain",
-    /// "Dairy") to sidestep enum-key JSON deserialization quirks. A third-party mod's
-    /// RegisterProfile call may omit categories -- lookups must go through
-    /// DietCategoryDefault.PassThrough, never a direct indexer.</summary>
+    /// <summary>Keyed by EnumFoodCategory.ToString() to sidestep enum-key JSON deserialization
+    /// quirks. A profile may omit categories -- always look up via DietCategoryDefault.PassThrough,
+    /// never a direct indexer.</summary>
     public Dictionary<string, DietCategoryDefault> CategoryDefaults { get; set; } = new();
 }

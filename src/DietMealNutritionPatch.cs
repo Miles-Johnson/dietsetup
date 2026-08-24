@@ -7,18 +7,10 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Postfix on BlockMeal.GetIngredientStackNutritionProperties -- meal ingredients resolve
-/// nutrition straight from the nutritionPropsWhenInMeal JSON attribute (or a liquid-container
-/// equivalent) and only fall back to CollectibleObject.GetNutritionProperties as a last resort, so
-/// DietNutritionPropertiesPatch never sees most real meal ingredients. This restores the same
-/// per-tag multiplier / grant / reaction resolution for them, via
-/// DietProfileRegistry.ResolveNutritionProperties -- its existing Processed guard already covers
-/// the one call path that goes through the already-patched CollectibleObject.GetNutritionProperties
-/// fallback. Called with queueReaction: false, since a single ingredient's reaction magnitude isn't
-/// meaningful on its own for a meal -- DietMealContentNutritionPatch sees the whole bowl at once and
-/// computes/queues one weighted DoT per reaction shape from the per-ingredient results this pushes
-/// onto DietProfileRegistry's MealIngredientContext buffer. See DietMealEatDoTPatch for the DoT
-/// consumer this ultimately feeds and the double-resolution wrinkle in tryFinishEatMeal.
+/// Postfix on BlockMeal.GetIngredientStackNutritionProperties -- restores grant/reaction
+/// resolution for meal ingredients, which mostly resolve from JSON and skip the already-patched
+/// CollectibleObject path. Full context:
+/// notes/dietsetup-patch-internals.md#meal-nutrition-patch--dietmealnutritionpatchcs.
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), nameof(BlockMeal.GetIngredientStackNutritionProperties))]
 public static class DietMealNutritionPatch

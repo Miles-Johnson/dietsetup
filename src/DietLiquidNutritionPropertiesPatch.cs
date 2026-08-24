@@ -7,10 +7,9 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Same resolver, second target: BlockLiquidContainerBase.GetNutritionProperties has its own
-/// override that reads NutritionPropsPerLitre directly for filled containers, only falling
-/// through to CollectibleObject.GetNutritionProperties (already patched above) when empty --
-/// filled drink containers would never reach the other postfix otherwise.
+/// Same resolver, second target: BlockLiquidContainerBase.GetNutritionProperties reads
+/// NutritionPropsPerLitre directly for filled containers, only falling through to the
+/// already-patched CollectibleObject path when empty -- filled drinks need their own postfix.
 /// </summary>
 [HarmonyPatch(typeof(BlockLiquidContainerBase), nameof(BlockLiquidContainerBase.GetNutritionProperties))]
 public static class DietLiquidNutritionPropertiesPatch

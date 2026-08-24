@@ -7,18 +7,10 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Harmony prefix that fully replaces EntityBehaviorHunger.UpdateNutrientHealthBoost for players
-/// (returns false to skip the original). Vanilla's formula is
-/// `2.5 * (FruitFraction + VegFraction + ProteinFraction + GrainFraction + DairyFraction)`,
-/// capped at 12.5. Since NutritionMult is now an authored-per-category value rather than a binary
-/// active/inactive flag, the replacement is a weighted average:
-/// `12.5 * sum(fraction_i * NutritionMult_i) / sum(NutritionMult_i)`.
-/// When every NutritionMult is 1 (the default, untouched profile) this reduces to exactly
-/// vanilla's `2.5 * sum` -- no behavior change for anyone on an all-1 profile. A category with
-/// NutritionMult 0 (e.g. a "fills but doesn't nourish" profile) carries zero weight, so a bar the
-/// player can structurally never fill can't drag their health-bonus ceiling down.
-///
-/// Verified against reference/decompiled/VSEssentials/Vintagestory.GameContent/EntityBehaviorHunger.cs:416-426.
+/// Harmony prefix fully replacing EntityBehaviorHunger.UpdateNutrientHealthBoost for players --
+/// weights vanilla's health-bonus formula by each category's authored NutritionMult (reduces to
+/// vanilla exactly when every mult is 1). Full derivation and decompiled verification:
+/// notes/dietsetup-patch-internals.md#nutrient-health-boost--dietnutrienthealthboostpatchcs.
 /// </summary>
 [HarmonyPatch(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.UpdateNutrientHealthBoost))]
 public static class DietNutrientHealthBoostPatch

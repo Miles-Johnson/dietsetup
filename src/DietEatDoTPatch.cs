@@ -8,21 +8,10 @@ using Vintagestory.API.Server;
 namespace dietsetup;
 
 /// <summary>
-/// Patches the protected CollectibleObject.tryEatStop (string-named target -- protected members
-/// can't be referenced via nameof from here) to apply the damage-over-time portion of a reaction
-/// that DietProfileRegistry.ResolveNutritionProperties deferred, by zeroing
-/// FoodNutritionProperties.Health so vanilla's own instant-damage branch there never fires.
-///
-/// tryEatStop calls GetNutritionProperties internally as its first line (on both sides, even
-/// though only the server acts on the result), which is what populates
-/// DietProfileRegistry's pending-DoT entry for this entity. The Prefix clears any stale entry
-/// (e.g. left over from a tooltip hover) before that happens, so the Postfix only ever sees an
-/// entry that this exact eat produced.
-///
-/// Verified against reference/upstream/vsapi/Common/Collectible/Collectible.cs:1852-1912 --
-/// mirrors vanilla's own Duration/TicksPerDuration/DamageOverTimeTypeEnum usage there, just
-/// sourcing the values dynamically (per eating profile) instead of from the item's static
-/// eatHealthEffectDurationSec/eatHealthEffectTicks attributes.
+/// Prefix+postfix on the protected CollectibleObject.tryEatStop (string target: protected members
+/// aren't nameof-able). Applies a reaction's deferred DoT portion by zeroing
+/// FoodNutritionProperties.Health so vanilla's instant-damage branch never fires. Ordering and
+/// decompiled-verification details: notes/dietsetup-patch-internals.md#eat-dot-patch--dieteatdotpatchcs.
 /// </summary>
 [HarmonyPatch(typeof(CollectibleObject), "tryEatStop")]
 public static class DietEatDoTPatch

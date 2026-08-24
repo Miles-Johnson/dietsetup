@@ -27,10 +27,8 @@ public class DietSetupModSystem : ModSystem
     public const string AttrAllowSelOnce = "dietsetup:allowselonce";
 
     // Rot-intake accumulator (Phase G3, for rfmechanics' goblin rot aura). Raw value + a
-    // world.Calendar.TotalHours timestamp, not a single number -- lets any external reader
-    // (rfmechanics, via a plain WatchedAttributes.GetDouble, no assembly reference) compute the
-    // live, continuously-decaying value on demand with no tick loop on either side, mirroring
-    // how the game's own transition system is lazy/timestamp-based. See RotIntakeAccrualPatch.
+    // world.Calendar.TotalHours timestamp so any external reader (no assembly reference needed)
+    // can compute the live, continuously-decaying value on demand with no tick loop either side.
     public const string AttrRotIntake = "dietsetup:rotIntake";
     public const string AttrRotIntakeUpdatedHours = "dietsetup:rotIntakeUpdatedHours";
 
@@ -50,12 +48,9 @@ public class DietSetupModSystem : ModSystem
     private GuiDialogDietSetup? dialog;
     private Harmony? harmony;
 
-    // Static guard so PatchAll runs at most once for the process's lifetime, regardless of how
-    // many DietSetupModSystem instances/Start() calls occur -- singleplayer instantiates a
-    // separate instance per side (client + integrated server) in the same process, and mod
-    // loading has been observed running its warning/scan passes more than once per session, so
-    // an unpatch-then-repatch inside Start() (the previous approach) wasn't fully race-proof:
-    // patches were observed stacking up to 2-3x, compounding the saturation multiplier.
+    // Static guard so PatchAll runs at most once for the process's lifetime -- singleplayer
+    // instantiates a separate DietSetupModSystem per side in the same process, and an
+    // unpatch-then-repatch inside Start() was observed stacking patches 2-3x, compounding the saturation math.
     private static bool harmonyPatched;
 
     public override void Start(ICoreAPI api)
@@ -67,9 +62,8 @@ public class DietSetupModSystem : ModSystem
             .RegisterMessageType<DietTriggerPacket>()
             .RegisterMessageType<DietSelectionPacket>();
 
-        // Nutrition scaling is applied via Harmony patches on EntityBehaviorHunger and the
-        // GetNutritionProperties chain, not by re-registering the "hunger" entity behavior class
-        // -- RegisterEntityBehaviorClass is backed by a plain Dictionary.Add and throws on a
+        // Nutrition scaling is applied via Harmony patches on EntityBehaviorHunger, not by
+        // re-registering the "hunger" behavior class -- RegisterEntityBehaviorClass throws on a
         // duplicate key, and VSEssentials always registers "hunger" first.
         if (!harmonyPatched)
         {
@@ -87,9 +81,8 @@ public class DietSetupModSystem : ModSystem
     }
 
     // Mod-shipped assets aren't indexed yet during Start() -- api.Assets.Get() throws for
-    // anything but a base asset at that stage. AssetsLoaded() runs after asset origins are
-    // fully initialized (EnumServerRunPhase.AssetsReady -> AssetsFinalize) and still before
-    // StartServerSide/StartClientSide, so the registry is populated in time for both.
+    // anything but a base asset then. AssetsLoaded() runs after asset origins are fully
+    // initialized, still before StartServerSide/StartClientSide, so the registry is ready for both.
     public override void AssetsLoaded(ICoreAPI api)
     {
         base.AssetsLoaded(api);
@@ -98,10 +91,9 @@ public class DietSetupModSystem : ModSystem
 
     public override void Dispose()
     {
-        // Only the instance that actually applied the patch (its own `harmony` field is
-        // non-null) resets the shared flag -- singleplayer disposes a client instance and a
-        // server instance separately, and the one that lost the Start()-time race must not
-        // reset harmonyPatched out from under the other instance's still-active patch.
+        // Only the instance that actually applied the patch (its own harmony field is non-null)
+        // resets the shared flag -- singleplayer disposes a client and server instance separately,
+        // and the loser of the Start()-time race must not reset the flag out from under the winner's patch.
         if (harmony != null)
         {
             harmony.UnpatchAll(HarmonyId);
@@ -112,11 +104,9 @@ public class DietSetupModSystem : ModSystem
     }
 
     /// <summary>
-    /// Load dietsetup.json. Missing file or successful parse are stored back (this is what
-    /// drops stale/removed keys and adds newly introduced ones, since StoreModConfig
-    /// serializes the strongly-typed config, not raw JSON). Malformed JSON falls back to
-    /// defaults in memory only, without touching the file, so the user's broken JSON is left
-    /// in place to fix.
+    /// Load dietsetup.json. A successful parse (or missing file) is stored back, which is what
+    /// drops stale keys and adds new ones -- StoreModConfig serializes the strongly-typed config,
+    /// not raw JSON. Malformed JSON falls back to in-memory defaults without touching the file.
     /// </summary>
     private static void LoadConfig(ICoreAPI api)
     {
@@ -137,11 +127,9 @@ public class DietSetupModSystem : ModSystem
             malformed = true;
         }
 
-        // Newtonsoft's JsonConvert.DeserializeObject<T>("") returns null instead of throwing, so
-        // an existing-but-empty (or otherwise null-producing) file looks identical to "file never
-        // existed" to LoadModConfig. Without this check that would silently be treated as a first
-        // run and overwritten with defaults below -- discarding whatever was there before (e.g. a
-        // file truncated by a crash mid-write) with no warning at all, unlike the throwing case above.
+        // Newtonsoft's DeserializeObject<T>("") returns null instead of throwing, so an
+        // existing-but-empty file looks identical to "never existed." Without this check that's
+        // silently treated as a first run and overwritten with defaults, discarding a crash-truncated file with no warning.
         if (loaded == null && fileExisted && !malformed)
         {
             malformed = true;
@@ -155,12 +143,9 @@ public class DietSetupModSystem : ModSystem
             return;
         }
 
-        // Only overwrite when nothing is at risk (loaded == null -- nothing on disk to lose) or
-        // the pre-rewrite backup actually succeeded. If fields would be dropped and the backup
-        // itself fails (permissions, disk full, locked file), skipping the rewrite this session is
-        // the only way to avoid silently losing those fields with no copy anywhere -- StoreModConfig
-        // would otherwise run right after regardless of whether WarnAndBackupIfFieldsWillBeDropped
-        // actually managed to protect anything.
+        // Only overwrite when nothing is at risk (loaded == null, nothing to lose) or the
+        // pre-rewrite backup actually succeeded. If a backup fails (permissions, disk full),
+        // skipping the rewrite this session is the only way to avoid silently losing fields with no copy anywhere.
         bool safeToOverwrite = loaded == null || WarnAndBackupIfFieldsWillBeDropped(api, filename);
         if (!safeToOverwrite)
         {
@@ -171,15 +156,10 @@ public class DietSetupModSystem : ModSystem
         api.StoreModConfig(config, filename);
     }
 
-    /// <summary>StoreModConfig always rewrites the file using only the current DietSetupConfig
-    /// shape -- any JSON key with no matching C# property is silently dropped on that rewrite
-    /// (documented VS behavior, not something dietsetup does deliberately). This update removes
-    /// DietPreset and the slider-bound fields entirely, so an existing hand-tuned dietsetup.json
-    /// (a live deployment has one) would lose that data with zero warning and zero trace the
-    /// first time this version loads. Detect it, warn loudly, and back up the pre-rewrite file so
-    /// the values are recoverable. Returns false only when fields would be dropped AND the backup
-    /// could not be confirmed -- the caller uses that to skip the rewrite entirely rather than
-    /// overwrite with no safety net.</summary>
+    /// <summary>StoreModConfig always rewrites using only the current DietSetupConfig shape -- any
+    /// unmatched JSON key is silently dropped (documented VS behavior). Detects that, backs up the
+    /// pre-rewrite file, and returns false only when a drop can't be confirmed backed up. Deployment context:
+    /// notes/dietsetup-patch-internals.md#config-field-drop-protection--dietsetupmodsystemcs-warnandbackupiffieldswillbedropped.</summary>
     private static bool WarnAndBackupIfFieldsWillBeDropped(ICoreAPI api, string filename)
     {
         try
@@ -209,11 +189,9 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    /// <summary>Loads the shipped profiles/tags/grants and registers them through the same
-    /// RegisterProfile/RegisterTag/RegisterGrantRule calls a third-party mod would use -- one
-    /// code path for "how content enters the registry," whether it's ours or theirs. Runs on both
-    /// sides (Start(ICoreAPI) fires for client and server) so DietProfileRegistry stays identical
-    /// on both, since the Harmony patches and the tooltip resolution both need it client-side too.</summary>
+    /// <summary>Loads shipped profiles/tags/grants through the same RegisterProfile/RegisterTag/
+    /// RegisterGrantRule calls a third-party mod would use. Runs on both sides (Start fires for
+    /// client and server) since the Harmony patches and tooltip resolution both need the registry client-side too.</summary>
     private static void LoadDietAssets(ICoreAPI api)
     {
         DietProfile[]? profiles = api.Assets.Get(new AssetLocation("dietsetup", "config/profiles.json")).ToObject<DietProfile[]>();
@@ -242,10 +220,9 @@ public class DietSetupModSystem : ModSystem
 
     private static readonly HashSet<string> ValidCategories = new() { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" };
 
-    /// <summary>A typo'd category key (e.g. "Vegtable") fails completely silently otherwise -- the
-    /// entry just never matches anything, and that profile behaves as pass-through for the real
-    /// category with no error anywhere. Runs after all profiles/tags/grants are registered, so it
-    /// catches both the shipped content and any third-party RegisterProfile call.</summary>
+    /// <summary>A typo'd category key (e.g. "Vegtable") fails silently otherwise -- the entry just
+    /// never matches, and that profile behaves as pass-through with no error. Runs after all
+    /// profiles/tags/grants are registered, catching shipped content and third-party registrations.</summary>
     private static void ValidateContent(ICoreAPI api)
     {
         foreach (DietProfile profile in DietProfileRegistry.AllProfiles)
@@ -336,12 +313,9 @@ public class DietSetupModSystem : ModSystem
         sapi!.Network.GetChannel(ChannelName).SendPacket(new DietTriggerPacket(), byPlayer);
     }
 
-    /// <summary>Existing dietConfigured=true players (the pre-rewrite flat-multiplier system, no
-    /// reaction concept ever existed for them) get pointed at the "legacy_custom" sentinel, whose
-    /// category defaults are computed from their own old attributes on every resolve -- see
-    /// DietMigration. Idempotent via the AttrProfile presence check; a brand-new player (never
-    /// had OldAttrConfigured either) isn't touched, and falls through to the normal auto-prompt /
-    /// Config.DefaultProfileId path.</summary>
+    /// <summary>Existing dietConfigured=true players (pre-rewrite flat-multiplier system, no
+    /// reaction concept) get pointed at the "legacy_custom" sentinel, computed from their own old
+    /// attributes on every resolve -- see DietMigration. Idempotent via the AttrProfile presence check.</summary>
     private static void MigrateLegacyProfileIfNeeded(IServerPlayer byPlayer)
     {
         ITreeAttribute wa = byPlayer.Entity.WatchedAttributes;
@@ -392,11 +366,9 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
-    /// <summary>Debug/testing only: zeroes the calling player's own satiety bar while leaving
-    /// their per-category nutrition levels (FruitLevel etc.) untouched -- OnEntityReceiveSaturation
-    /// only lets nutrition rise while satiety isn't already full, so testing the max-HP-bonus
-    /// ceiling normally means waiting out a real-time drain between bites. This skips the wait
-    /// without touching the thing actually under test.</summary>
+    /// <summary>Debug/testing only: zeroes the calling player's satiety while leaving per-category
+    /// nutrition levels untouched -- OnEntityReceiveSaturation only lets nutrition rise while
+    /// satiety isn't already full, so this skips the real-time drain wait without touching what's under test.</summary>
     private void RegisterDrainSatietyCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietdrainsatiety")
@@ -416,12 +388,9 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
-    /// <summary>Debug/testing only: sets or clears a "dietsetup:&lt;tag&gt;Mult" entity stat on the
-    /// calling player, to simulate a race-trait grant without touching raceframework's JSON.
-    /// EntityStats.Set defaults to a WeightedSum blend seeded with a "base" of 1, so the blended
-    /// result is 1 + delta, not delta itself -- pass 0.3 to simulate a "+30% benefit" trait, not
-    /// 1.3. Stats set here go through WatchedAttributes and sync to the calling client, so
-    /// /dietdiag (client-side) will reflect the change immediately.</summary>
+    /// <summary>Debug/testing only: sets/clears a "dietsetup:&lt;tag&gt;Mult" entity stat on the
+    /// caller, to simulate a race-trait grant. EntityStats.Set seeds a WeightedSum base of 1, so
+    /// the blended result is 1 + delta -- pass 0.3 for "+30%", not 1.3. Syncs to client, so /dietdiag reflects it.</summary>
     private void RegisterTagMultCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("diettagmult")
@@ -452,12 +421,10 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
-    /// <summary>Debug/testing only: get/set/clear the calling player's raw rot-intake
-    /// accumulator (AttrRotIntake) directly, bypassing needing to eat rotten food repeatedly
-    /// and wait out RotIntakeHalfLifeHours' calendar-time decay to see rfmechanics' goblin
-    /// rot aura respond. Setting also stamps AttrRotIntakeUpdatedHours to "now" so the value
-    /// doesn't immediately start decaying from a stale timestamp the moment it's set. Same
-    /// controlserver bar as /diettagmult -- no legitimate non-debug purpose.</summary>
+    /// <summary>Debug/testing only: get/set/clear the caller's raw rot-intake accumulator
+    /// directly, bypassing eating rotten food repeatedly to see rfmechanics' goblin rot aura
+    /// respond. Setting also stamps the updated-hours timestamp to "now" so the value doesn't
+    /// immediately start decaying from a stale timestamp.</summary>
     private void RegisterRotIntakeDebugCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietrotintake")
@@ -496,10 +463,9 @@ public class DietSetupModSystem : ModSystem
         RegisterDiagCommand(api);
     }
 
-    /// <summary>Diagnostic: with no argument, dumps the calling player's resolved profile,
-    /// category defaults, live hunger-behavior values, and whether the 4 Harmony patches are
-    /// actually attached. With an item code argument, reports how that item resolves (vanilla
-    /// category vs. granted, final satiety/nutrition/reaction) without needing to eat it.</summary>
+    /// <summary>Diagnostic: with no argument, dumps the caller's resolved profile, category
+    /// defaults, live hunger values, and whether the 4 Harmony patches are attached. With an item
+    /// code, reports how that item resolves without needing to eat it.</summary>
     private void RegisterDiagCommand(ICoreClientAPI api)
     {
         api.ChatCommands.Create("dietdiag")
@@ -585,10 +551,9 @@ public class DietSetupModSystem : ModSystem
 
     private void OnDietTriggerReceived(DietTriggerPacket packet)
     {
-        // Don't open immediately: PlayerNowPlaying can fire fast enough (especially in
-        // singleplayer, in-process) that our dialog opens while the vanilla character-creation
-        // wizard is still visually closing, producing an overlap. Wait for that specific dialog
-        // instance's own OnClosed event when it's present, guaranteeing strict ordering.
+        // Don't open immediately: PlayerNowPlaying can fire fast enough (especially singleplayer,
+        // in-process) that our dialog opens while vanilla's character-creation wizard is still
+        // visually closing. Wait for that dialog's own OnClosed event for strict ordering.
         GuiDialog? createCharDlg = capi!.Gui.LoadedGuis.FirstOrDefault(dlg => dlg is GuiDialogCreateCharacter && dlg.IsOpened());
         if (createCharDlg != null)
         {
@@ -608,10 +573,8 @@ public class DietSetupModSystem : ModSystem
     }
 
     /// <summary>Self-service reopen, gated by the already-synced allowdietselonce flag (or
-    /// Creative mode, matching vanilla's dev-convenience bypass for /charsel). The server
-    /// independently re-validates the same flag before writing anything in
-    /// OnDietSelectionReceived -- this client-side check is purely for instant local
-    /// feedback, never trusted alone for the actual state mutation.</summary>
+    /// Creative, matching vanilla's /charsel dev bypass). The server independently re-validates
+    /// the same flag before writing anything -- this client-side check is purely for instant local feedback.</summary>
     private void RegisterSelfCommand(ICoreClientAPI api)
     {
         api.ChatCommands.Create("dietsel")
@@ -641,8 +604,7 @@ public class DietSetupModSystem : ModSystem
         {
             // Vanilla's own JSON-authored pages get Init() called by GuiDialogSurvivalHandbook
             // before this event fires, but pages added here are never initialized by anyone else
-            // -- skipping this leaves titleCached null forever, which NREs the moment a player
-            // types anything into the handbook search box (GuiHandbookTextPage.GetTextMatchWeight).
+            // -- skipping this leaves titleCached null forever, NRE-ing the moment a player types in the search box.
             var page = new GuiHandbookTextPage
             {
                 pageCode = "dietsetup:diet-guide",

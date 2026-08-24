@@ -7,13 +7,9 @@ namespace dietsetup;
 
 /// <summary>
 /// Postfix on CollectibleObject.GetNutritionProperties -- the choke point tryEatBegin/tryEatStep/
-/// tryEatStop all consult before doing anything, and the source tooltip/animation code reads too.
-/// Grants nutrition to items vanilla has none for (raw mammal meat, via grant rules) and writes
-/// reaction damage into Health for zero-satiety/zero-nutrition categories with an authored
-/// reaction. Never returns null for something that wasn't already null, never mutates the shared
-/// __result in place -- see DietProfileRegistry.ResolveNutritionProperties for the clone
-/// discipline and the double-fire guard needed because BlockLiquidContainerBase's empty-container
-/// fallback calls this same patched method internally.
+/// tryEatStop and the tooltip/animation code all consult. Grants nutrition to items vanilla has
+/// none for and writes reaction damage for zero-satiety categories. Clone/double-fire discipline:
+/// notes/dietsetup-patch-internals.md#nutrition-properties-patch--dietnutritionpropertiespatchcs.
 /// </summary>
 [HarmonyPatch(typeof(CollectibleObject), nameof(CollectibleObject.GetNutritionProperties))]
 public static class DietNutritionPropertiesPatch

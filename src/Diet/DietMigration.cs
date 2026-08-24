@@ -3,14 +3,9 @@ using Vintagestory.API.Datastructures;
 namespace dietsetup.Diet;
 
 /// <summary>
-/// Legacy players (dietConfigured=true under the old flat-multiplier system, before reactions or
-/// named profiles existed) must not start taking reaction damage the moment this update deploys.
-/// Rather than snapping their hand-tuned 0-150% sliders onto the nearest of a handful of named
-/// profiles (which would silently change their satiety ratios to whatever preset happens to be
-/// closest, in whichever direction that preset's numbers pull), every legacy player is instead
-/// pointed at one shared sentinel id, LegacyCustomProfileId, whose category defaults are computed
-/// on the fly from that exact character's own old attributes -- exact preservation, no lookup
-/// table, no new storage (the old dietFruitMult/etc. keys are already left in place, unread).
+/// Legacy players (pre-rewrite flat-multiplier system) must not start taking reaction damage the
+/// moment this update deploys. Rather than snapping their sliders onto the nearest named profile
+/// (changing their ratios), each is pointed at a sentinel computed live from their own old attributes.
 /// </summary>
 public static class DietMigration
 {

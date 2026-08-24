@@ -8,14 +8,10 @@ using Vintagestory.API.Config;
 namespace dietsetup.Gui;
 
 /// <summary>
-/// The "Diet Setup" dialog: one button per registered, picker-visible DietProfile. Clicking a
-/// button immediately sends that profile's id and closes the dialog -- there's no separate
-/// confirm step, since a profile pick is a single atomic choice (no sliders to combine anymore).
-/// Opened either automatically on a brand-new character's first spawn (DietTriggerPacket) or
-/// manually via /dietsel once an admin has granted the allowdietselonce flag.
-/// No dismiss-via-titlebar-X (ToggleKeyCombinationCode is null, same as the vanilla character
-/// creation wizard) -- the player must click a profile button, so nobody gets stuck in a
-/// permanently-unconfigured state.
+/// The "Diet Setup" dialog: one button per registered, picker-visible profile; picking one is a
+/// single atomic action, no confirm step. No dismiss-via-titlebar-X -- picking a profile is
+/// mandatory, so nobody gets stuck unconfigured. Full context:
+/// notes/dietsetup-patch-internals.md#diet-setup-dialog--guidialogdietsetupcs.
 /// </summary>
 public class GuiDialogDietSetup : GuiDialog
 {

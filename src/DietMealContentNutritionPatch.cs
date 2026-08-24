@@ -9,20 +9,11 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Prefix+postfix on the static BlockMeal.GetContentNutritionProperties overload (the one that
-/// builds the per-ingredient FoodNutritionProperties array vanilla ultimately sums in Consume) --
-/// the only place with whole-bowl visibility. DietMealNutritionPatch resolves one ingredient at a
-/// time and can't tell how much of the meal a reacting ingredient actually is; this patch drains
-/// the per-ingredient results DietMealNutritionPatch pushed onto DietProfileRegistry's
-/// MealIngredientContext buffer, groups them by reaction shape, and queues exactly one
-/// satiety-weighted DoT per shape -- replacing the old "one full-magnitude hit regardless of how
-/// much of the bowl reacted" behavior. DietMealEatDoTPatch's drain/collapse logic is unchanged and
-/// still needed: GetContentNutritionProperties is called twice per real eat (once for a discarded
-/// validation check, once inside Consume), so this postfix runs twice per bite and queues two
-/// identical entries per shape -- the collapse there absorbs that exactly as it did before.
-///
-/// Explicit argument types in the HarmonyPatch attribute disambiguate from the 3-param instance
-/// overload (BlockMeal.cs:660) of the same name, which just delegates into this one.
+/// Prefix+postfix on the static BlockMeal.GetContentNutritionProperties overload -- the only place
+/// with whole-bowl visibility. Drains MealIngredientContext, groups ingredients by reaction shape,
+/// and queues one satiety-weighted DoT per shape. Explicit argument types in HarmonyPatch
+/// disambiguate from the 3-param instance overload. Details:
+/// notes/dietsetup-patch-internals.md#meal-content-nutrition-patch--dietmealcontentnutritionpatchcs.
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), nameof(BlockMeal.GetContentNutritionProperties),
     new[] { typeof(IWorldAccessor), typeof(ItemSlot), typeof(ItemStack[]), typeof(EntityAgent), typeof(bool), typeof(float), typeof(float) })]

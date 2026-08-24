@@ -9,25 +9,16 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Shared accrual formula for RotIntakeStandaloneEatPatch/RotIntakeMealEatPatch below.
-/// Phase G3: accrues a rot-intake accumulator (DietSetupModSystem.AttrRotIntake) on eat
-/// completion, for rfmechanics' goblin rot aura to read back (radius/intensity driven by how
-/// rot-fed the goblin has been). Independent of the DietReaction/DoT system (DietEatDoTPatch,
-/// DietMealEatDoTPatch) -- this reads TransitionLevel directly via the same public
-/// UpdateAndGetTransitionState call vanilla's own tryEatStop uses for its own satiety/health
-/// spoilage falloff, not anything DietProfileRegistry resolves.
-///
-/// Decay-then-add, exponential half-life on the in-game calendar clock, computed lazily on
-/// every write (no new tick loop) -- see DietSetupConfig.RotIntakeHalfLifeHours's doc comment
-/// for why calendar-hours rather than real-world time.
+/// Shared accrual formula for the two patches below. Phase G3: accrues a rot-intake accumulator
+/// (DietSetupModSystem.AttrRotIntake) on eat completion, for rfmechanics' goblin rot aura to read
+/// back. Decay-then-add on the in-game calendar clock. Details:
+/// notes/dietsetup-patch-internals.md#rot-intake-accrual--rotintakeaccrualpatchcs.
 /// </summary>
 internal static class RotIntakeAccrual
 {
-    /// <summary>
-    /// transitionLevel &lt;= 0 (fresh food) contributes nothing and skips the write entirely --
-    /// eating fresh food should not reset/decay the accumulator faster than time alone already
-    /// does.
-    /// </summary>
+    /// <summary>transitionLevel &lt;= 0 (fresh food) contributes nothing and skips the write
+    /// entirely -- eating fresh food should not decay the accumulator faster than time alone
+    /// already does.</summary>
     public static void AccrueRotIntake(EntityPlayer player, float transitionLevel)
     {
         if (transitionLevel <= 0f) return;
@@ -48,10 +39,9 @@ internal static class RotIntakeAccrual
     }
 }
 
-/// <summary>Standalone eating -- mirrors vanilla's own tryEatStop spoilage read exactly
-/// (Collectible.cs:1858-1859), just repurposing the same TransitionLevel for a different
-/// accumulator instead of the satiety/health falloff vanilla computes from it. Same Harmony
-/// target as DietEatDoTPatch, independent postfix.</summary>
+/// <summary>Standalone eating -- mirrors vanilla's own tryEatStop spoilage read
+/// (Collectible.cs:1858-1859), repurposing TransitionLevel for this accumulator instead of
+/// satiety/health falloff. Same Harmony target as DietEatDoTPatch, independent postfix.</summary>
 [HarmonyPatch(typeof(CollectibleObject), "tryEatStop")]
 public static class RotIntakeStandaloneEatPatch
 {
@@ -67,13 +57,10 @@ public static class RotIntakeStandaloneEatPatch
 }
 
 /// <summary>
-/// Meal eating. Same Harmony target as DietMealEatDoTPatch, independent postfix -- BlockMeal
-/// never calls tryEatStop, so it needs its own hook. Per the freshness investigation, all
-/// installed cooking recipes pool freshness across the whole pot at cook completion
-/// (CollectibleObject.CarryOverFreshness) before it's stamped onto content stacks, so true
-/// per-ingredient resolution doesn't survive cooking -- average TransitionLevel across the
-/// meal's non-empty content stacks instead. Known, accepted limitation (matches the existing
-/// freshness investigation's conclusion), not a regression this patch introduces.
+/// Meal eating -- same target as DietMealEatDoTPatch, independent postfix (BlockMeal never calls
+/// tryEatStop). Averages TransitionLevel across the pot's contents since cooking pools freshness
+/// before it's stamped on stacks -- known, accepted limitation. Details:
+/// notes/dietsetup-patch-internals.md#rot-intake-meal--rotintakeaccrualpatchcs-rotintakemealeatpatch.
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), "tryFinishEatMeal")]
 public static class RotIntakeMealEatPatch

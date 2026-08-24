@@ -8,23 +8,10 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Harmony prefix that fully replaces EntityBehaviorHunger.OnEntityReceiveSaturation for players
-/// (returns false to skip the original). Full replacement is still necessary -- OnEntityReceiveSaturation
-/// only ever receives EnumFoodCategory, never the eaten item (every caller, e.g.
-/// CollectibleObject.tryEatStop, invokes it as ReceiveSaturation(satiety, foodCategory), 2 args)
-/// -- so satiety and nutrition-level gain must be scaled independently, off the same raw
-/// `saturation` input, right here. A non-replacement approach (just scaling the incoming
-/// `saturation` and passing a derived nutritionGainMultiplier) can't give independent control:
-/// nutritionGainMultiplier_new = L/S is undefined at S=0, exactly the case a zero-satiety category
-/// needs.
-///
-/// Note this patch does NOT read the granted/reaction-adjusted FoodNutritionProperties clone that
-/// DietNutritionPropertiesPatch may have produced -- it doesn't need to. Grant rules only ever
-/// fill in a category (never an item-specific multiplier), so satiety/nutrition scaling always
-/// resolves purely from (profile, foodCat), which this method already has independently.
-///
-/// Verified line-by-line against
-/// reference/decompiled/VSEssentials/Vintagestory.GameContent/EntityBehaviorHunger.cs:239-285.
+/// Harmony prefix fully replacing EntityBehaviorHunger.OnEntityReceiveSaturation for players --
+/// the only way to scale satiety and nutrition gain independently, since callers never pass the
+/// eaten item. Full rationale and decompiled verification:
+/// notes/dietsetup-patch-internals.md#saturation-patch--dietsaturationpatchcs.
 /// </summary>
 [HarmonyPatch(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.OnEntityReceiveSaturation))]
 public static class DietSaturationPatch
