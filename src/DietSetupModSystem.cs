@@ -104,6 +104,28 @@ public class DietSetupModSystem : ModSystem
     {
         base.AssetsFinalize(api);
         FoodTagRegistry.ResolveStaticTags(api);
+        DumpFoodTagsForVerification(api);
+    }
+
+    // TEMP, prompt-5 verification only -- remove before this lands. Static + dynamic together,
+    // via GetTagMask on a synthesized stack, to prove resin's null-transition case resolves to
+    // fresh (not dropped) and the whole-default still excludes a non-food item.
+    private static void DumpFoodTagsForVerification(ICoreAPI api)
+    {
+        foreach (string code in new[] { "game:resin", "game:redmeat-raw", "game:axe-flint" })
+        {
+            var loc = new AssetLocation(code);
+            CollectibleObject? collectible = (CollectibleObject?)api.World.GetItem(loc) ?? api.World.GetBlock(loc);
+            if (collectible == null)
+            {
+                api.Logger.Notification("[dietsetup] tagdump {0}: not found", code);
+                continue;
+            }
+            var slot = new DummySlot(new ItemStack(collectible));
+            ulong mask = FoodTagRegistry.GetTagMask(api.World, slot, out bool determined);
+            string tags = string.Join(", ", FoodTagRegistry.TagNames(mask));
+            api.Logger.Notification("[dietsetup] tagdump {0}: determined={1} tags={2}", code, determined, tags.Length == 0 ? "(no tags)" : tags);
+        }
     }
 
     public override void Dispose()

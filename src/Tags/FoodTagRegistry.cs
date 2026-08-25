@@ -191,9 +191,12 @@ public static class FoodTagRegistry
     }
 
     /// <summary>Static mask for the stack's collectible, plus fresh/spoiled read from its own
-    /// live transition state -- never from the item code. determined is false only if the
-    /// engine call itself threw -- a genuinely unavailable read, which the caller must not
-    /// treat as resolved.</summary>
+    /// live transition state -- never from the item code. TransitionLevel reads exactly 0f for
+    /// the whole fresh window (confirmed notes/1.22-verification.md item 6), so >0f is spoiled.
+    /// determined is false only if the engine call itself threw -- a genuinely unavailable
+    /// read, which the caller must not treat as resolved. A clean null (e.g. game:resin, which
+    /// has no Perish transition at all) is a real, permanent answer, not a failure, and
+    /// resolves to fresh on purpose so an elf's "requires: fresh" rule matches it.</summary>
     public static ulong GetTagMask(IWorldAccessor world, ItemSlot slot, out bool determined)
     {
         determined = true;
