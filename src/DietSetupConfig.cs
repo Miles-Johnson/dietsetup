@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace dietsetup;
@@ -41,44 +40,4 @@ public class DietSetupConfig
 
     /// <summary>Accumulator ceiling.</summary>
     public double RotIntakeCap { get; set; } = 1.0;
-
-    // ── Goblin inverse-freshness satiety curve (Phase G3 companion) ──
-    // Inverts vanilla's spoilage penalty for goblins -- rises as food decays. Lives here, not
-    // rfmechanics, because it's a satiety-math chokepoint. Design rationale:
-    // notes/dietsetup-patch-internals.md#goblin-inverse-freshness-config--dietsetupconfigcs.
-
-    /// <summary>Master toggle for the goblin inverse-freshness satiety curve. If false, goblins
-    /// get vanilla's own FoodSpoilageSatLossMul penalty like anyone else.</summary>
-    public bool EnableGoblinInverseFreshness { get; set; } = true;
-
-    /// <summary>Trait code identifying the goblin race. Must match rfmechanics' own
-    /// RFMechanicsConfig.GoblinTraitCode default -- duplicated rather than assembly-linked, same
-    /// as IntakeHalfLifeHours["rot"] / GoblinRotAuraIntakeHalfLifeHours above.</summary>
-    public string GoblinTraitCode { get; set; } = "rf-goblin-positive";
-
-    /// <summary>Satiety multiplier at TransitionLevel 1.0 (fully rotten, pre-transformation into
-    /// game:rot). Setting this to 1.0 pins the curve's output at 1.0 across the whole range --
-    /// "no penalty, no bonus" -- a real fallback available without a rebuild.</summary>
-    public double GoblinInverseFreshnessMaxMultiplier { get; set; } = 1.75;
-
-    /// <summary>Shape of the ramp from TransitionLevel 0 (always 1.0) to 1 (MaxMultiplier).
-    /// LateWeighted (default) concentrates the bonus near full decay (t^2) -- pairs with the rot
-    /// aura's larder-hold ceiling parking food near the top of the range.</summary>
-    public GoblinInverseFreshnessCurveMode GoblinInverseFreshnessCurve { get; set; } = GoblinInverseFreshnessCurveMode.LateWeighted;
-
-    /// <summary>Wildcard item codes (WildcardUtil.Match, e.g. "game:redmeat-raw") exempt from the
-    /// curve. An exempt stack gets multiplier 1.0 AND keeps vanilla's own spoilage penalty on top
-    /// -- behaves exactly as it would for a non-goblin. Empty by default; routed through a single
-    /// AppliesTo predicate so a future tag-based rule touches one method.</summary>
-    public string[] GoblinInverseFreshnessExemptCodes { get; set; } = Array.Empty<string>();
-}
-
-/// <summary>Ramp shape for GoblinInverseFreshnessCurve. See DietSetupConfig.GoblinInverseFreshnessCurve.</summary>
-public enum GoblinInverseFreshnessCurveMode
-{
-    /// <summary>multiplier = 1 + (max - 1) * t</summary>
-    Linear,
-
-    /// <summary>multiplier = 1 + (max - 1) * t^2 -- bonus concentrated near full decay.</summary>
-    LateWeighted
 }

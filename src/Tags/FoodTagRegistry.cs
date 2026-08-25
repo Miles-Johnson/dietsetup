@@ -198,6 +198,23 @@ public static class FoodTagRegistry
         return id >= 0 && id < table.Length ? table[id] : 0;
     }
 
+    private static bool IsRelevant(ulong staticMask, CollectibleObject collectible) =>
+        (staticMask & sourceAxisMask) != 0 || collectible.NutritionProps != null;
+
+    /// <summary>Static mask plus the fresh/spoiled bit for a spoil level the caller already has
+    /// (e.g. GlobalConstants.FoodSpoilageSatLossMul's own spoilState parameter) -- avoids
+    /// re-deriving TransitionLevel through a synthetic ItemSlot, which has no real Inventory and
+    /// so can't reproduce container-specific rot rates (crock dampening etc.) the original slot
+    /// already applied.</summary>
+    public static ulong GetTagMaskForSpoilState(CollectibleObject collectible, float spoilLevel)
+    {
+        ulong mask = GetStaticMask(collectible);
+        if (!IsRelevant(mask, collectible)) return mask;
+
+        mask |= 1UL << tagBits[spoilLevel > 0f ? SpoiledTag : FreshTag];
+        return mask;
+    }
+
     /// <summary>Static mask for the stack's collectible, plus fresh/spoiled read from its own
     /// live transition state. >0f TransitionLevel is spoiled; a clean null (e.g. game:resin, no
     /// Perish transition) resolves to fresh on purpose, not a failure. determined is false only
@@ -218,8 +235,7 @@ public static class FoodTagRegistry
 
         ulong mask = GetStaticMask(stack.Collectible);
 
-        bool relevant = (mask & sourceAxisMask) != 0 || stack.Collectible.NutritionProps != null;
-        if (!relevant) return mask;
+        if (!IsRelevant(mask, stack.Collectible)) return mask;
 
         float? transitionLevel;
         try

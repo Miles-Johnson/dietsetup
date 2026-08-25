@@ -22,11 +22,10 @@ SOFTWARE.
 
 ---
 
-Note on two files: `src/DietSaturationPatch.cs` and `src/DietNutrientHealthBoostPatch.cs`
-are Harmony prefixes that fully replace a vanilla Vintage Story method, and their core
-control-flow structure necessarily mirrors the corresponding vanilla logic in
-`EntityBehaviorHunger` (Vintagestory.GameContent, Anego Studios) in order to correctly
-replicate original behavior before layering independent multipliers on top. That mirrored
-structure is used under Vintage Story's own mod-source terms (see the license bundled with
-the official `vsapi`/`vsessentialsmod` source at https://github.com/anegostudios), not
-additionally granted under the MIT license above.
+Note on `src/DietNutrientHealthBoostPatch.cs`: it is a Harmony prefix that fully replaces a
+vanilla Vintage Story method, and its core control-flow structure necessarily mirrors the
+corresponding vanilla logic in `EntityBehaviorHunger` (Vintagestory.GameContent, Anego
+Studios) in order to correctly replicate original behavior before layering independent
+multipliers on top. That mirrored structure is used under Vintage Story's own mod-source
+terms (see the license bundled with the official `vsapi`/`vsessentialsmod` source at
+https://github.com/anegostudios), not additionally granted under the MIT license above.

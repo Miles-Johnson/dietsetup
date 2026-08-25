@@ -7,8 +7,11 @@ using Vintagestory.GameContent;
 
 namespace dietsetup.Rules;
 
-/// <summary>The one evaluation path (spec sections 1, 5). No Harmony patches call this yet
-/// (that's prompt 7) -- today it's reachable only via the /dietresolve diagnostic command.</summary>
+/// <summary>The one evaluation path (spec sections 1, 5). Called from the /dietresolve
+/// diagnostic command and, via DietSpoilageResolution, from DietSpoilageSatietyPatch,
+/// DietSpoilageHealthPatch, and DietMealContentNutritionPatch (prompt 7, spoilage-curve sites)
+/// -- all go through the same two overloads below, never a second copy of the stage-1/stage-2
+/// logic.</summary>
 public static class DietResolver
 {
     /// <summary>matchedRuleIndices is null on the hot path (no allocation): pass a reusable list
@@ -18,6 +21,16 @@ public static class DietResolver
         ulong tagMask = FoodTagRegistry.GetTagMask(world, slot, out float spoilLevel, out bool determined);
         if (!determined) return DietResolveResult.Undetermined;
 
+        return Resolve(diet, tagMask, spoilLevel, api, forEntity, portionSize, matchedRuleIndices);
+    }
+
+    /// <summary>Core evaluation for a tag mask and spoil level already known by the caller --
+    /// e.g. GlobalConstants.FoodSpoilageSatLossMul's own spoilState parameter (no ItemSlot exists
+    /// at that patch site) or a meal's per-ingredient tags evaluated against the meal-wide pooled
+    /// spoil level (spec section 7). The slot-based overload above derives tagMask/spoilLevel from
+    /// a live transition-state read and calls this.</summary>
+    public static DietResolveResult Resolve(CompiledDiet diet, ulong tagMask, float spoilLevel, ICoreAPI api, Entity? forEntity, float portionSize = 1f, List<int>? matchedRuleIndices = null)
+    {
         DietVerdict verdict;
         float satiety;
         float nutrition;

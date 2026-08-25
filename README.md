@@ -76,6 +76,19 @@ restructuring it breaks any mod already reading it.
   Expanded Foods, Wildcraft). This mod patches `GetNutritionProperties` on `CollectibleObject`
   and `BlockLiquidContainerBase` via Harmony — other mods patching the same methods may conflict.
   If you hit an issue running alongside another food mod, please report which one.
+- **`BlockMeal.GetContentNutritionProperties` is a full prefix replacement**, not a behavior
+  delta on top of vanilla — it re-implements the method body to fix a vanilla bug (spoilage is
+  resolved against the outer meal stack instead of the ingredient being scored) and to fold in
+  this mod's own meal-reaction aggregation. Two consequences: it will drift silently on a future
+  Vintage Story update to that method, and any other mod prefixing the same overload races this
+  one for which prefix's result actually takes effect.
+- **Pies and liquid containers still bypass the per-ingredient meal path.** `BlockPie` and
+  `BlockLiquidContainerBase` call `FoodSpoilageSatLossMul`/`HealthLossMul` directly with their
+  own outer stack (the whole pie, the liquid content) rather than routing through
+  `BlockMeal.GetContentNutritionProperties` — so a pie resolves as one whole `meal`-tagged item
+  through the entity's diet curve, not per filling ingredient. Decided out of scope for the
+  current spoilage-curve patch; closing this means neutralizing `BlockPie.GetNutritionHealthMul`'s
+  own direct call (see `notes/dietsetup-tag-engine-handover.md`, amended prompt 7 target 4).
 - **Uninstalling is safe.** All per-player state this mod writes is stored as plain
   string/bool values on the player entity; removing the mod leaves those as inert, harmlessly
   orphaned data rather than breaking save loading.
