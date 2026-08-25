@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using dietsetup.Diet;
+using dietsetup.Rules;
+using dietsetup.Tags;
 using HarmonyLib;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -42,7 +44,14 @@ public static class DietMealContentNutritionPatch
     {
         if (!DietSetupModSystem.Config.EnableDietSystem) return true;
 
-        if (forEntity is EntityPlayer) DietProfileRegistry.ClearMealIngredientContext(forEntity.EntityId);
+        if (forEntity is EntityPlayer)
+        {
+            DietProfileRegistry.ClearMealIngredientContext(forEntity.EntityId);
+            // Second line of defense against this Prefix firing twice per real eat (see the class
+            // doc comment) -- cleared and repopulated on every invocation, so by the time Consume's
+            // own real ReceiveSaturation loop runs, only its own invocation's values remain queued.
+            DietProfileRegistry.ClearNutritionMultiplierQueue(forEntity.EntityId);
+        }
 
         var results = new List<FoodNutritionProperties>();
         ItemStack? mealStack = inSlot.Itemstack;
@@ -97,6 +106,15 @@ public static class DietMealContentNutritionPatch
             props.Health *= healthLossMul * healthMul * quantity;
             props.Intoxication *= quantity;
             props.Psychedelic *= quantity;
+
+            // Enqueued 1:1 with results.Add below, by construction -- not an ordering assumption
+            // to verify later. results is exactly what Consume's own ReceiveSaturation loop
+            // iterates, in the same order (tag-engine step 9, design 3).
+            if (forEntity is EntityPlayer)
+            {
+                DietProfileRegistry.EnqueueNutritionMultiplier(forEntity.EntityId, ResolveIngredientNutritionMultiplier(world, forEntity, ingredientStack, spoilState));
+            }
+
             results.Add(props);
         }
 
@@ -105,6 +123,29 @@ public static class DietMealContentNutritionPatch
         if (forEntity is EntityPlayer) QueueMealReactionDoT(forEntity);
 
         return false;
+    }
+
+    /// <summary>Combined nutrition-gain multiplier for one meal ingredient (tag-fold, plus
+    /// rule-matched Nutrition when a diet is assigned and the ingredient's own verdict isn't
+    /// Inedible) -- same logic as DietNutritionMultiplierEatPatch's standalone producer, reused
+    /// here per ingredient rather than per whole eat.</summary>
+    private static float ResolveIngredientNutritionMultiplier(IWorldAccessor world, EntityAgent forEntity, ItemStack ingredientStack, float spoilState)
+    {
+        ulong tagMask = FoodTagRegistry.GetTagMaskForSpoilState(ingredientStack.Collectible, spoilState);
+        float nutritionMult = FoodTagRegistry.TagNutritionMultiplier(tagMask, forEntity);
+
+        string dietId = forEntity.WatchedAttributes.GetString(DietSetupModSystem.AttrProfile, DietSetupModSystem.Config.DefaultProfileId);
+        CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
+        if (diet != null)
+        {
+            DietResolveResult result = DietResolver.Resolve(diet, tagMask, spoilState, world.Api, forEntity);
+            if (result.Verdict != DietVerdict.Inedible)
+            {
+                nutritionMult *= result.Nutrition;
+            }
+        }
+
+        return nutritionMult;
     }
 
     /// <summary>Drains MealIngredientContext, groups by reaction shape, and queues one

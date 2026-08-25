@@ -174,6 +174,13 @@ public static class DietRuleRegistry
                 continue;
             }
 
+            if (type is DietEffectType.StatModifier or DietEffectType.Hydration)
+            {
+                // Compiled and validated (DietResolver.ApplyEffect is a deliberate no-op for both
+                // in v1), but silent otherwise -- an author has no way to know these don't apply yet.
+                api.Logger.Warning("[dietsetup] Diet '{0}' rule '{1}': effect type '{2}' is recognized but not applied in v1.", dietId, ruleLabel, type);
+            }
+
             IDietCustomEffect? customEffect = null;
             if (type == DietEffectType.Custom)
             {

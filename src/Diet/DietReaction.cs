@@ -4,9 +4,8 @@ namespace dietsetup.Diet;
 /// without migrating hand-edited deployed configs.</summary>
 public class DietReaction
 {
-    /// <summary>Negative = damage. On a category default, only applied when the owning
-    /// category's SatietyMult and NutritionMult are both exactly 0 -- see DietCategoryDefault. On
-    /// a DietGrantRule, applied under that rule's own condition -- see DietGrantRule.Reaction.</summary>
+    /// <summary>Negative = damage. Only applied when the owning category's SatietyMult and
+    /// NutritionMult are both exactly 0 -- see DietCategoryDefault.</summary>
     public float Health { get; set; }
 
     /// <summary>0 (default) = applied as one instant hit. Greater than 0 spreads Health across a

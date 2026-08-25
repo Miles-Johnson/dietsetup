@@ -3,9 +3,8 @@
 A Vintage Story mod that lets each character pick a diet profile — Balanced, Carnivore,
 Herbivore, or a custom one you author — that scales how much satiety/nutrition they gain from
 each vanilla food category (Fruit, Vegetable, Protein, Grain, Dairy). Profiles biologically
-incompatible with a category can react (damage on eating), raw meat can be granted edibility
-under the right profile, and everything composes correctly across solid food, liquids, and
-(with the caveat below) meals.
+incompatible with a category can react (damage on eating), and everything composes correctly
+across solid food, liquids, and (with the caveat below) meals.
 
 New characters are prompted to pick a profile once, via a dialog with three buttons. Existing
 characters keep playing unmodified until they pick one.
@@ -41,13 +40,15 @@ on dietsetup's code — just set an entity stat:
 entity.Stats.Set("dietsetup:<tag>Mult", "<sourcename>", <delta>, false);
 ```
 
-Where `<tag>` is one of dietsetup's registered tags (see `assets/dietsetup/config/tags.json`,
-e.g. `mushroom`). **Important:** entity stats blend additively from a base of `1`, so a delta of
-`0.3` produces a **1.3x** multiplier — pass `0.3` for "+30% benefit," not `1.3`.
+Where `<tag>` is one of dietsetup's registered food tags (see `assets/dietsetup/config/foodtags.json`,
+e.g. `preserved`, `grain`). Applies to both satiety and nutrient-bar gain. **Important:** entity
+stats blend additively from a base of `1`, so a delta of `0.3` produces a **1.3x** multiplier —
+pass `0.3` for "+30% benefit," not `1.3`.
 
-Mod authors can also call `DietProfileRegistry.RegisterProfile`/`RegisterTag`/`RegisterGrantRule`
-directly to add their own content. This API is functional but not yet considered stable —
-expect it to evolve.
+Mod authors can call `DietProfileRegistry.RegisterProfile` to add their own profiles, and ship a
+`config/foodtags.json` in their own domain to add tags/patterns (merged via `Api.Assets.GetMany`,
+so no code dependency on dietsetup is needed for tags). This API is functional but not yet
+considered stable — expect it to evolve.
 
 ### Per-tag intake accumulator
 
@@ -111,8 +112,8 @@ Features
 
 Choose a diet profile at character creation; reopen the picker anytime with /dietsel.
 Four built-in profiles — Balanced, Carnivore, Herbivore, and Elf — each with distinct per-category satiety/nutrition multipliers.
-Eating outside your profile isn't just weaker: Carnivore and Herbivore trigger a damage reaction on incompatible categories, while Carnivore also unlocks raw meat as edible.
-Custom profiles, food tags, and raw-meat grants are fully data-driven (profiles.json, tags.json, grants.json) so pack authors can add their own.
+Eating outside your profile isn't just weaker: Carnivore and Herbivore trigger a damage reaction on incompatible categories.
+Custom profiles and food tags are fully data-driven (profiles.json, tags.json) so pack authors can add their own.
 Race-mod integration hook: any mod can grant a per-tag nutrition multiplier to an entity with a single stat call and zero code dependency on Diet Setup — multipliers stack multiplicatively with the active profile.
 Applies across both solid food and liquid containers.
 Config toggles for enabling the system, auto-prompting new characters, and setting a default profile.

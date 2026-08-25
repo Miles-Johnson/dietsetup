@@ -91,6 +91,11 @@ public static class DietResolver
             ApplyEffect(effects[i], api, forEntity, portionSize, ref acc);
         }
 
+        // Race traits as a resolver input (tag-engine step 9), not a second multiply outside the
+        // rules engine -- satiety-axis only, see FoodTagRegistry.TagNutritionMultiplier for the
+        // nutrition-axis counterpart, applied only at the eat/meal queue producers.
+        FoodTagRegistry.ApplySatietyTagMultiplier(tagMask, forEntity, ref acc.Satiety);
+
         return new DietResolveResult(true, acc.Verdict, Math.Max(0f, acc.Satiety), Math.Max(0f, acc.Nutrition), acc.DamageMagnitude, acc.DamageDurationSec);
     }
 

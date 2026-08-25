@@ -24,7 +24,7 @@ public static class DietMealNutritionPatch
         }
 
         __result = DietProfileRegistry.ResolveNutritionProperties(
-            forEntity.Api, forEntity, stack.Collectible, __result, DietSetupModSystem.Config.DefaultProfileId,
+            forEntity.Api, forEntity, stack.Collectible, stack, __result, DietSetupModSystem.Config.DefaultProfileId,
             queueReaction: false, out DietReaction? queuedReaction, out float notionalSatiety, out bool reactionSourced);
         DietProfileRegistry.AddMealIngredientContext(forEntity.EntityId, notionalSatiety, queuedReaction, reactionSourced);
     }

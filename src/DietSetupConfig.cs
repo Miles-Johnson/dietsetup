@@ -40,4 +40,9 @@ public class DietSetupConfig
 
     /// <summary>Accumulator ceiling.</summary>
     public double RotIntakeCap { get; set; } = 1.0;
+
+    /// <summary>Defensive cap on the per-entity nutrition-multiplier queue (DietProfileRegistry,
+    /// step 9) -- a meal has at most a handful of ingredients, so this bounds any future
+    /// producer/consumer mismatch from growing unbounded rather than reflecting a real limit.</summary>
+    public int NutritionMultiplierQueueCap { get; set; } = 16;
 }

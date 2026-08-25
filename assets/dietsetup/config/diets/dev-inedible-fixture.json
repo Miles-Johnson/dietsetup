@@ -1,0 +1,19 @@
+{
+  "_note": "Dev fixture, kept permanently: goblin.json's seed content never produces an Inedible verdict, so without this file there is no diet in the game that can exercise DietProfileRegistry.IsInedibleForEntity's return-null path. Assign via /dietassignrules dev-inedible-fixture.",
+  "id": "dev-inedible-fixture",
+  "hiddenFromPicker": true,
+  "default": {
+    "verdict": "edible",
+    "satiety": { "flat": 1.0 },
+    "nutrition": { "flat": 1.0 }
+  },
+  "rules": [
+    {
+      "requires": ["fruit"],
+      "priority": 0,
+      "verdict": "inedible",
+      "satiety": { "flat": 0.0 },
+      "nutrition": { "flat": 0.0 }
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+[
+    {
+        "op": "replace",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/4/hydrationByType/*",
+        "value": 15.0
+    },
+    {
+        "op": "replace",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/15/hydrationByType/*",
+        "value": 15.0
+    },
+    {
+        "op": "replace",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/16/hydrationByType/*",
+        "value": 15.0
+    },
+    {
+        "op": "replace",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/16/hydrationByType/game:redmeat-vintage",
+        "value": -175.0
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/253/hydrationByType/primitivesurvival:snakemeat-partbaked",
+        "value": -1.0
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/253/hydrationByType/primitivesurvival:snakemeat-charred",
+        "value": -4.0
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/259/hydrationByType/primitivesurvival:crabmeat-partbaked",
+        "value": -2.0
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/259/hydrationByType/primitivesurvival:crabmeat-charred",
+        "value": -7.0
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/-",
+        "value": {
+            "Code": "feverstonewilds:bisonleg-*",
+            "hydration": 0.0,
+            "IsBoiling": false,
+            "hydrationByType": {
+                "*": 0.0,
+                "feverstonewilds:bisonleg-raw": 15.0
+            }
+        }
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/-",
+        "value": {
+            "Code": "feverstonewilds:cockatrice-tail-*",
+            "hydration": 0.0,
+            "IsBoiling": false,
+            "hydrationByType": {
+                "*": 0.0,
+                "feverstonewilds:cockatrice-tail-raw": 15.0
+            }
+        }
+    },
+    {
+        "op": "add",
+        "file": "hydrateordiedrate:config/hod.additemhydration.json",
+        "path": "/Patches/-",
+        "value": {
+            "Code": "feverstonewilds:ribs-*",
+            "hydration": 0.0,
+            "IsBoiling": false,
+            "hydrationByType": {
+                "*": 0.0,
+                "feverstonewilds:ribs-raw": 15.0
+            }
+        }
+    }
+]

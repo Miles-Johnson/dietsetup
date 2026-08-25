@@ -3,34 +3,69 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using dietsetup;
+using dietsetup.Rules;
+using dietsetup.Tags;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
-using Vintagestory.API.Util;
 using Vintagestory.GameContent;
 
 namespace dietsetup.Diet;
 
 /// <summary>
-/// Central registry + resolver for diet profiles, tags and grant rules. The reverse tag->items
-/// index is rebuilt lazily behind a dirty flag on first use after any RegisterTag call -- there's
-/// no fixed "build late" point, since a fixed point can be beaten by another mod registering a tag later.
+/// Central registry + resolver for diet profiles. Tag matching itself lives in
+/// dietsetup.Tags.FoodTagRegistry (the three-axis registry the rules engine also uses) -- this
+/// class no longer keeps a separate tag index (tag-engine migration step 9).
 /// </summary>
 public static class DietProfileRegistry
 {
     private static readonly Dictionary<string, DietProfile> profiles = new();
-    private static readonly Dictionary<string, List<string>> tagPatterns = new();
-    private static readonly List<DietGrantRule> grantRules = new();
-    // Keyed by AssetLocation, not string -- the hot-path tag-multiplier lookup in
-    // ResolveNutritionProperties never pays AssetLocation.ToString()'s allocation this way.
-    private static readonly Dictionary<AssetLocation, HashSet<string>> itemToTags = new();
-    // "dietsetup:<tag>Mult" per registered tag, precomputed once in RegisterTag so
-    // GetTagMultiplier never concatenates strings on the hot path.
-    private static readonly Dictionary<string, string> tagStatKeys = new();
-    private static bool dirty = true;
+
+    // Per-entity FIFO of combined nutrition-gain multipliers (tag-fold * rule-matched Nutrition),
+    // one entry per real eaten ingredient, consumed in order by DietSaturationScalePatch. Server
+    // side only (see the enqueue sites' IServerWorldAccessor guard) -- a client-side tooltip
+    // render must never write here, since singleplayer runs client+server DietSetupModSystem
+    // instances in the same process sharing this same static dictionary.
+    private static readonly Dictionary<long, Queue<float>> PendingNutritionMultipliers = new();
+
+    public static void ClearNutritionMultiplierQueue(long entityId)
+    {
+        if (PendingNutritionMultipliers.TryGetValue(entityId, out Queue<float>? queue))
+        {
+            queue.Clear();
+        }
+    }
+
+    /// <summary>Full removal, not just Clear -- called on player disconnect so a departed
+    /// player's entry doesn't sit in this dictionary forever.</summary>
+    public static void RemoveNutritionMultiplierQueue(long entityId) => PendingNutritionMultipliers.Remove(entityId);
+
+    internal static void EnqueueNutritionMultiplier(long entityId, float value)
+    {
+        if (!PendingNutritionMultipliers.TryGetValue(entityId, out Queue<float>? queue))
+        {
+            PendingNutritionMultipliers[entityId] = queue = new Queue<float>();
+        }
+        if (queue.Count >= DietSetupModSystem.Config.NutritionMultiplierQueueCap)
+        {
+            queue.Dequeue(); // defensive only -- see DietSetupConfig.NutritionMultiplierQueueCap
+        }
+        queue.Enqueue(value);
+    }
+
+    public static bool TryDequeueNutritionMultiplier(long entityId, out float value)
+    {
+        if (PendingNutritionMultipliers.TryGetValue(entityId, out Queue<float>? queue) && queue.Count > 0)
+        {
+            value = queue.Dequeue();
+            return true;
+        }
+        value = 1f;
+        return false;
+    }
 
     // Marks clones this resolver already produced, so BlockLiquidContainerBase's fallback (which
     // calls the already-patched base.GetNutritionProperties internally, then fires its own
-    // postfix on the same object) can't apply a grant/reaction twice.
+    // postfix on the same object) can't apply a reaction twice.
     private static readonly ConditionalWeakTable<FoodNutritionProperties, object> Processed = new();
     private static readonly object ProcessedMarker = new();
 
@@ -93,19 +128,6 @@ public static class DietProfileRegistry
         profiles[profile.Id] = profile;
     }
 
-    public static void RegisterTag(string tag, string pattern)
-    {
-        if (!tagPatterns.TryGetValue(tag, out List<string>? patterns))
-        {
-            tagPatterns[tag] = patterns = new List<string>();
-            tagStatKeys[tag] = "dietsetup:" + tag + "Mult";
-        }
-        patterns.Add(pattern);
-        dirty = true;
-    }
-
-    public static void RegisterGrantRule(DietGrantRule rule) => grantRules.Add(rule);
-
     /// <summary>Pure registry lookup -- does not know about the "legacy_custom" sentinel. Used to
     /// validate an id a player/API caller is trying to assign.</summary>
     public static DietProfile? GetProfile(string id) => profiles.TryGetValue(id, out DietProfile? p) ? p : null;
@@ -115,10 +137,6 @@ public static class DietProfileRegistry
     /// <summary>Unfiltered, unlike PickerProfiles -- for startup validation, which needs to check
     /// every registered profile including hidden ones.</summary>
     public static IEnumerable<DietProfile> AllProfiles => profiles.Values;
-
-    public static IEnumerable<string> AllTagNames => tagPatterns.Keys;
-
-    public static IEnumerable<DietGrantRule> AllGrantRules => grantRules;
 
     /// <summary>Honors the "legacy_custom" sentinel by building a profile from the entity's own
     /// legacy attributes on the fly (see DietMigration), falls back to defaultProfileId, and as a
@@ -136,10 +154,12 @@ public static class DietProfileRegistry
     private static readonly DietProfile PassThroughProfile = new() { Id = "__passthrough", HiddenFromPicker = true };
 
     /// <summary>Shared resolver for both GetNutritionProperties postfixes (queueReaction: true)
-    /// and DietMealNutritionPatch's per-ingredient calls (queueReaction: false). Fills in a
-    /// category for grant-only items and writes reaction damage into Health; returns vanillaResult
-    /// untouched (no clone/alloc) for the common non-granted, non-reacting case. Design rationale:
-    /// notes/dietsetup-patch-internals.md#resolve-nutrition-properties--dietprofileregistrycs.
+    /// and DietMealNutritionPatch's per-ingredient calls (queueReaction: false). The diet rules
+    /// engine is the sole authority on whether an item is food at all: vanilla-inedible stays
+    /// inedible (no grant fallback), and an assigned diet can additionally verdict a
+    /// vanilla-edible item Inedible. Otherwise writes reaction damage into Health; returns
+    /// vanillaResult untouched (no clone/alloc) for the common non-reacting case. Design
+    /// rationale: notes/dietsetup-patch-internals.md#resolve-nutrition-properties--dietprofileregistrycs.
     ///
     /// The three out params are non-optional -- every call site must handle them explicitly.
     /// notionalSatiety: this ingredient's satiety for meal-wide weighting, captured before a firing
@@ -149,7 +169,7 @@ public static class DietProfileRegistry
     /// reactionSourced: whether the magnitude came from the diet reaction (clamp-eligible) vs. the
     /// food's own vanilla Health (never clamped).
     /// </summary>
-    public static FoodNutritionProperties? ResolveNutritionProperties(ICoreAPI api, Entity forEntity, CollectibleObject collectible, FoodNutritionProperties? vanillaResult, string defaultProfileId, bool queueReaction, out DietReaction? queuedReaction, out float notionalSatiety, out bool reactionSourced)
+    public static FoodNutritionProperties? ResolveNutritionProperties(ICoreAPI api, Entity forEntity, CollectibleObject collectible, ItemStack? stack, FoodNutritionProperties? vanillaResult, string defaultProfileId, bool queueReaction, out DietReaction? queuedReaction, out float notionalSatiety, out bool reactionSourced)
     {
         queuedReaction = null;
         reactionSourced = false;
@@ -163,36 +183,30 @@ public static class DietProfileRegistry
             return vanillaResult;
         }
 
-        EnsureIndexFresh(api);
-
         if (vanillaResult != null && Processed.TryGetValue(vanillaResult, out _))
         {
             return vanillaResult;
         }
 
-        string category;
-        float baseSatiety;
-        bool isGrant;
-        DietReaction? grantReaction = null;
+        if (vanillaResult == null)
+        {
+            return null; // genuinely inedible -- vanilla behavior preserved, no grant fallback
+        }
 
-        if (vanillaResult != null)
+        // Resolved once here, reused below for both the Inedible check and (when no rules-engine
+        // diet is assigned) the tag fold -- avoids a second FoodTagRegistry.GetTagMask call, which
+        // does a live transition-state read.
+        string dietId = forEntity.WatchedAttributes.GetString("dietsetup:profile", defaultProfileId);
+        CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
+        var tagSlot = new DummySlot(stack ?? new ItemStack(collectible));
+        ulong tagMask = FoodTagRegistry.GetTagMask(api.World, tagSlot, out float spoilLevel, out bool determined);
+
+        if (IsInedibleForEntity(diet, tagMask, spoilLevel, determined, api, forEntity))
         {
-            category = vanillaResult.FoodCategory.ToString();
-            baseSatiety = vanillaResult.Satiety;
-            isGrant = false;
+            return null;
         }
-        else
-        {
-            (string Category, float BaseSatiety, DietReaction? Reaction)? grant = LookupGrant(collectible);
-            if (grant == null)
-            {
-                return null; // genuinely inedible, nothing to grant -- vanilla behavior preserved
-            }
-            category = grant.Value.Category;
-            baseSatiety = grant.Value.BaseSatiety;
-            grantReaction = grant.Value.Reaction;
-            isGrant = true;
-        }
+
+        string category = vanillaResult.FoodCategory.ToString();
 
         if (category is not ("Fruit" or "Vegetable" or "Protein" or "Grain" or "Dairy"))
         {
@@ -203,44 +217,39 @@ public static class DietProfileRegistry
         DietCategoryDefault catDefault = profile.CategoryDefaults.TryGetValue(category, out DietCategoryDefault? cd) ? cd : DietCategoryDefault.PassThrough;
 
         bool reactionFires = catDefault.SatietyMult == 0f && catDefault.NutritionMult == 0f && catDefault.Reaction != null;
-        float tagMult = GetTagMultiplier(forEntity, collectible.Code);
 
-        if (!isGrant && !reactionFires && tagMult == 1f)
+        // Only when no rules-engine diet is assigned -- an entity with a compiled diet already
+        // gets this same fold inside DietResolver.Resolve (call site A). Applying it again here
+        // would double the fold, rebuilding the exact bug this method exists to remove.
+        float tagMult = 1f;
+        if (diet == null)
+        {
+            FoodTagRegistry.ApplySatietyTagMultiplier(tagMask, forEntity, ref tagMult);
+        }
+
+        if (!reactionFires && tagMult == 1f)
         {
             return vanillaResult; // no-op: nothing this resolver needs to change
         }
 
-        // The category-level reaction (profile incompatible with this whole category) takes
-        // priority; a grant's own reaction only fires when the category default is still
-        // untouched baseline. Never double-fires: reactionFires already covers the zeroed-and-reacting case.
-        DietReaction? firingReaction = reactionFires
-            ? catDefault.Reaction
-            : (isGrant && grantReaction != null && catDefault.SatietyMult >= 1f && catDefault.NutritionMult >= 1f ? grantReaction : null);
+        DietReaction? firingReaction = reactionFires ? catDefault.Reaction : null;
 
         // Manual shallow copy, not vanillaResult.Clone() -- vanilla's Clone() deep-clones
         // EatenStack via JsonItemStack.Clone(), which NREs for some liquids with a null Code.
         // EatenStack is never read/written below, so reusing it by reference sidesteps the bug.
-        FoodNutritionProperties clone = vanillaResult == null
-            ? new FoodNutritionProperties()
-            : new FoodNutritionProperties
-            {
-                FoodCategory = vanillaResult.FoodCategory,
-                Satiety = vanillaResult.Satiety,
-                Health = vanillaResult.Health,
-                Intoxication = vanillaResult.Intoxication,
-                SaturationLossDelay = vanillaResult.SaturationLossDelay,
-                EatenStack = vanillaResult.EatenStack,
-            };
-
-        if (isGrant)
+        FoodNutritionProperties clone = new FoodNutritionProperties
         {
-            clone.FoodCategory = Enum.Parse<EnumFoodCategory>(category);
-            clone.Satiety = baseSatiety;
-        }
+            FoodCategory = vanillaResult.FoodCategory,
+            Satiety = vanillaResult.Satiety,
+            Health = vanillaResult.Health,
+            Intoxication = vanillaResult.Intoxication,
+            SaturationLossDelay = vanillaResult.SaturationLossDelay,
+            EatenStack = vanillaResult.EatenStack,
+        };
 
-        // Harmless *1f no-op when this clone only exists because of a grant/reaction with no
-        // active tag-mult source. If a reaction below zeroes Satiety, multiplying first vs. after
-        // makes no observable difference.
+        // Harmless *1f no-op when this clone only exists because of a reaction with no active
+        // tag-mult source. If a reaction below zeroes Satiety, multiplying first vs. after makes
+        // no observable difference.
         clone.Satiety *= tagMult;
         // Captured here, not after a firing reaction potentially zeroes Satiety below -- see the
         // notionalSatiety doc comment on this method for why.
@@ -260,13 +269,9 @@ public static class DietProfileRegistry
                 winner = ClampReactionMagnitude(forEntity, winner);
             }
 
-            if (reactionFires)
-            {
-                // Only the zeroed-category case reads as "no benefit" -- a grant-only reaction
-                // (e.g. Balanced eating raw meat) is still nourishing, just risky, so its satiety
-                // is left as the grant set it above.
-                clone.Satiety = 0f;
-            }
+            // firingReaction is only ever set from the zeroed-category branch above, so this is
+            // always the "no benefit" case -- a category the profile rejects outright.
+            clone.Satiety = 0f;
 
             if (firingReaction.DurationSec > 0f)
             {
@@ -290,76 +295,16 @@ public static class DietProfileRegistry
         return clone;
     }
 
-    private static (string Category, float BaseSatiety, DietReaction? Reaction)? LookupGrant(CollectibleObject collectible)
+    /// <summary>Whether diet (the rules-engine diet assigned to forEntity, or null) verdicts this
+    /// tagMask/spoilLevel Inedible. No diet, or an undetermined transition-state read, both fall
+    /// through to false (old/vanilla edibility stands) -- this only ever narrows edibility, never
+    /// grants it. tagMask/spoilLevel/determined are the caller's own already-resolved
+    /// FoodTagRegistry.GetTagMask call, not re-derived here.</summary>
+    private static bool IsInedibleForEntity(CompiledDiet? diet, ulong tagMask, float spoilLevel, bool determined, ICoreAPI api, Entity forEntity)
     {
-        string itemCode = collectible.Code?.ToString() ?? "";
-        foreach (DietGrantRule rule in grantRules)
-        {
-            if (rule.ItemPattern != null && WildcardUtil.Match(rule.ItemPattern, itemCode))
-            {
-                return (rule.Category, rule.BaseSatiety, rule.Reaction);
-            }
-        }
-        foreach (DietGrantRule rule in grantRules)
-        {
-            if (rule.Tag != null && collectible.Code != null
-                && itemToTags.TryGetValue(collectible.Code, out HashSet<string>? tags) && tags.Contains(rule.Tag))
-            {
-                return (rule.Category, rule.BaseSatiety, rule.Reaction);
-            }
-        }
-        return null;
-    }
+        if (diet == null || !determined) return false;
 
-    private static void EnsureIndexFresh(ICoreAPI api)
-    {
-        if (!dirty) return;
-
-        itemToTags.Clear();
-        foreach (CollectibleObject collectible in api.World.Collectibles)
-        {
-            AssetLocation? code = collectible.Code;
-            if (code == null) continue;
-            string codeStr = code.ToString(); // paid once per collectible per rebuild only
-
-            foreach ((string tag, List<string> patterns) in tagPatterns)
-            {
-                if (WildcardUtil.Match(patterns.ToArray(), codeStr))
-                {
-                    if (!itemToTags.TryGetValue(code, out HashSet<string>? tags))
-                    {
-                        itemToTags[code] = tags = new HashSet<string>();
-                    }
-                    tags.Add(tag);
-                }
-            }
-        }
-
-        dirty = false;
-    }
-
-    /// <summary>Per-entity, per-tag satiety multiplier from namespaced entity stats (e.g. a race
-    /// trait's "dietsetup:mushroomMult"). Short-circuits to 1f for unmatched items (the fast path
-    /// for most). Gotcha: EntityStats.Set seeds a WeightedSum base of 1 -- author 0.3 for "+30%", not 1.3.</summary>
-    private static float GetTagMultiplier(Entity forEntity, AssetLocation? code)
-    {
-        if (code == null || !itemToTags.TryGetValue(code, out HashSet<string>? tags) || tags.Count == 0)
-        {
-            return 1f;
-        }
-
-        float floor = DietSetupModSystem.Config.TagMultiplierFloor;
-        float mult = 1f;
-        foreach (string tag in tags)
-        {
-            if (tagStatKeys.TryGetValue(tag, out string? statKey))
-            {
-                // Floor before multiplying, not after: stacked negative trait deltas on a single
-                // tag can blend below 0, and multiplying two already-negative tags back to
-                // positive would hide that instead of correcting it.
-                mult *= Math.Max(floor, forEntity.Stats.GetBlended(statKey));
-            }
-        }
-        return mult;
+        DietResolveResult result = DietResolver.Resolve(diet, tagMask, spoilLevel, api, forEntity);
+        return result.Verdict == DietVerdict.Inedible;
     }
 }

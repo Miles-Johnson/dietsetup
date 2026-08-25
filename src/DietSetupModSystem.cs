@@ -231,30 +231,17 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    /// <summary>Loads shipped profiles/tags/grants through the same RegisterProfile/RegisterTag/
-    /// RegisterGrantRule calls a third-party mod would use. Runs on both sides (Start fires for
-    /// client and server) since the Harmony patches and tooltip resolution both need the registry client-side too.</summary>
+    /// <summary>Loads shipped profiles through the same RegisterProfile call a third-party mod
+    /// would use. Runs on both sides (Start fires for client and server) since the Harmony
+    /// patches and tooltip resolution both need the registry client-side too. Tag content is
+    /// FoodTagRegistry's job now (LoadFoodTagAssets, config/foodtags.json) -- the old
+    /// config/tags.json mechanism was retired in tag-engine migration step 9.</summary>
     private static void LoadDietAssets(ICoreAPI api)
     {
         DietProfile[]? profiles = api.Assets.Get(new AssetLocation("dietsetup", "config/profiles.json")).ToObject<DietProfile[]>();
         foreach (DietProfile profile in profiles ?? Array.Empty<DietProfile>())
         {
             DietProfileRegistry.RegisterProfile(profile);
-        }
-
-        Dictionary<string, string[]>? tags = api.Assets.Get(new AssetLocation("dietsetup", "config/tags.json")).ToObject<Dictionary<string, string[]>>();
-        foreach ((string tag, string[] patterns) in tags ?? new Dictionary<string, string[]>())
-        {
-            foreach (string pattern in patterns)
-            {
-                DietProfileRegistry.RegisterTag(tag, pattern);
-            }
-        }
-
-        DietGrantRule[]? grants = api.Assets.Get(new AssetLocation("dietsetup", "config/grants.json")).ToObject<DietGrantRule[]>();
-        foreach (DietGrantRule grant in grants ?? Array.Empty<DietGrantRule>())
-        {
-            DietProfileRegistry.RegisterGrantRule(grant);
         }
 
         ValidateContent(api);
@@ -289,7 +276,7 @@ public class DietSetupModSystem : ModSystem
 
     /// <summary>A typo'd category key (e.g. "Vegtable") fails silently otherwise -- the entry just
     /// never matches, and that profile behaves as pass-through with no error. Runs after all
-    /// profiles/tags/grants are registered, catching shipped content and third-party registrations.</summary>
+    /// profiles/tags are registered, catching shipped content and third-party registrations.</summary>
     private static void ValidateContent(ICoreAPI api)
     {
         foreach (DietProfile profile in DietProfileRegistry.AllProfiles)
@@ -302,17 +289,6 @@ public class DietSetupModSystem : ModSystem
                         "[dietsetup] Profile '{0}' has a CategoryDefaults entry for unrecognized category '{1}' -- likely a typo (valid: Fruit, Vegetable, Protein, Grain, Dairy). This entry will never be used.",
                         profile.Id, key);
                 }
-            }
-        }
-
-        var knownTags = new HashSet<string>(DietProfileRegistry.AllTagNames);
-        foreach (DietGrantRule grant in DietProfileRegistry.AllGrantRules)
-        {
-            if (grant.Tag != null && !knownTags.Contains(grant.Tag))
-            {
-                api.Logger.Warning(
-                    "[dietsetup] Grant rule for category '{0}' references tag '{1}', which is not defined in tags.json -- likely a typo. This rule's Tag match will never fire.",
-                    grant.Category, grant.Tag);
             }
         }
     }
@@ -340,8 +316,6 @@ public class DietSetupModSystem : ModSystem
 
     public void RegisterProfile(DietProfile profile) => DietProfileRegistry.RegisterProfile(profile);
 
-    public void RegisterTag(string tag, string pattern) => DietProfileRegistry.RegisterTag(tag, pattern);
-
     public override void StartServerSide(ICoreServerAPI api)
     {
         base.StartServerSide(api);
@@ -356,12 +330,17 @@ public class DietSetupModSystem : ModSystem
         // (or been skipped), so this trigger can never stack with it.
         api.Event.PlayerNowPlaying += OnPlayerNowPlaying;
 
+        // Closes the nutrition-multiplier queue's only leak path (DietProfileRegistry, step 9) --
+        // without this a departed player's dictionary entry sits forever.
+        api.Event.PlayerDisconnect += OnPlayerDisconnect;
+
         api.Network.GetChannel(ChannelName).SetMessageHandler<DietSelectionPacket>(OnDietSelectionReceived);
 
         RegisterAdminGrantCommand(api);
         RegisterDrainSatietyCommand(api);
         RegisterTagMultCommand(api);
         RegisterRotIntakeDebugCommand(api);
+        RegisterAssignRulesDietCommand(api);
 
         // GameReady, not AssetsFinalize -- CharacterSystem.traits is populated by its own
         // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
@@ -379,7 +358,7 @@ public class DietSetupModSystem : ModSystem
         CharacterSystem? charSys = api.ModLoader.GetModSystem<CharacterSystem>();
         if (charSys == null) return;
 
-        var knownTags = new HashSet<string>(DietProfileRegistry.AllTagNames);
+        var knownTags = new HashSet<string>(FoodTagRegistry.AllTagNames);
         foreach (Trait trait in charSys.traits)
         {
             if (trait.Attributes == null) continue;
@@ -390,7 +369,7 @@ public class DietSetupModSystem : ModSystem
                 string tag = key.Substring("dietsetup:".Length, key.Length - "dietsetup:".Length - "Mult".Length);
                 if (!knownTags.Contains(tag))
                 {
-                    api.Logger.Warning("[dietsetup] Trait '{0}' writes stat key '{1}', which does not match any tag in tags.json -- likely a typo.", trait.Code, key);
+                    api.Logger.Warning("[dietsetup] Trait '{0}' writes stat key '{1}', which does not match any tag in foodtags.json -- likely a typo.", trait.Code, key);
                 }
             }
         }
@@ -399,6 +378,11 @@ public class DietSetupModSystem : ModSystem
     private void OnPlayerCreate(IServerPlayer byPlayer)
     {
         byPlayer.SetModData(PendingModDataKey, true);
+    }
+
+    private static void OnPlayerDisconnect(IServerPlayer byPlayer)
+    {
+        DietProfileRegistry.RemoveNutritionMultiplierQueue(byPlayer.Entity.EntityId);
     }
 
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)
@@ -568,6 +552,31 @@ public class DietSetupModSystem : ModSystem
                 wa.SetDouble(valueKey, value);
                 wa.SetDouble(updatedKey, caller.Entity.World.Calendar.TotalHours);
                 return TextCommandResult.Success($"Set {valueKey}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
+            });
+    }
+
+    /// <summary>Standing admin tool, not a throwaway: sets the caller's dietsetup:profile directly
+    /// to a rules-engine diet id (e.g. "goblin"), bypassing the old profile picker. /dietsel's own
+    /// picker only offers profiles.json ids until diet ids and profile ids are unified (tag-engine
+    /// migration step 10/11) -- until then this is the only assignment path for a rules-engine diet.</summary>
+    private void RegisterAssignRulesDietCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietassignrules")
+            .WithDescription("Admin: set your own dietsetup:profile directly to a rules-engine diet id, bypassing the profile picker")
+            .RequiresPrivilege(Privilege.controlserver)
+            .WithArgs(api.ChatCommands.Parsers.Word("dietId"))
+            .HandleWith(args =>
+            {
+                IPlayer caller = args.Caller.Player;
+                string dietId = (string)args[0];
+
+                if (DietRuleRegistry.GetDiet(dietId) == null)
+                {
+                    return TextCommandResult.Error($"No rules-engine diet registered for id '{dietId}'.");
+                }
+
+                caller.Entity.WatchedAttributes.SetString(AttrProfile, dietId);
+                return TextCommandResult.Success($"dietsetup:profile set to '{dietId}' (rules-engine diet, bypasses the profile picker).");
             });
     }
 
