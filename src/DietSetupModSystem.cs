@@ -104,12 +104,11 @@ public class DietSetupModSystem : ModSystem
     {
         base.AssetsFinalize(api);
         FoodTagRegistry.ResolveStaticTags(api);
-        DumpFoodTagsForVerification(api);
     }
 
-    // TEMP, prompt-5 verification only -- remove before this lands. Static + dynamic together,
-    // via GetTagMask on a synthesized stack, to prove resin's null-transition case resolves to
-    // fresh (not dropped) and the whole-default still excludes a non-food item.
+    // TEMP, prompt-5 verification only -- remove before this lands. Called from GameReady, not
+    // AssetsFinalize -- api.World.Calendar is still null there (confirmed live), so any
+    // perishable's UpdateAndGetTransitionState throws regardless of slot/inventory shape.
     private static void DumpFoodTagsForVerification(ICoreAPI api)
     {
         foreach (string code in new[] { "game:resin", "game:redmeat-raw", "game:axe-flint" })
@@ -351,6 +350,7 @@ public class DietSetupModSystem : ModSystem
         // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
         // calls. GameReady is the next phase, guaranteeing LoadGamePre has fully completed first.
         api.Event.ServerRunPhase(EnumServerRunPhase.GameReady, () => ValidateTraitKeys(api));
+        api.Event.ServerRunPhase(EnumServerRunPhase.GameReady, () => DumpFoodTagsForVerification(api));
     }
 
     /// <summary>Cross-checks every "dietsetup:&lt;tag&gt;Mult" stat key any registered trait
