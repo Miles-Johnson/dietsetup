@@ -6,6 +6,7 @@ using System.Reflection;
 using dietsetup.Diet;
 using dietsetup.Gui;
 using dietsetup.Network;
+using dietsetup.Tags;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Client;
@@ -94,6 +95,15 @@ public class DietSetupModSystem : ModSystem
     {
         base.AssetsLoaded(api);
         LoadDietAssets(api);
+        LoadFoodTagAssets(api);
+    }
+
+    // Runs after AssetsLoaded, on both sides, once api.World.Collectibles is populated -- the
+    // earliest point the tag registry can walk every collectible and resolve static masks.
+    public override void AssetsFinalize(ICoreAPI api)
+    {
+        base.AssetsFinalize(api);
+        FoodTagRegistry.ResolveStaticTags(api);
     }
 
     public override void Dispose()
@@ -223,6 +233,18 @@ public class DietSetupModSystem : ModSystem
         }
 
         ValidateContent(api);
+    }
+
+    /// <summary>Merges every domain's config/foodtags.json into the tag registry (prompt 5) --
+    /// GetMany, not Get, so a compat pack can add tags for a third-party mod without touching
+    /// dietsetup's own file. dietsetup ships the vanilla tags only.</summary>
+    private static void LoadFoodTagAssets(ICoreAPI api)
+    {
+        Dictionary<AssetLocation, FoodTagConfigFile> files = api.Assets.GetMany<FoodTagConfigFile>(api.Logger, "config/foodtags.json");
+        foreach (FoodTagConfigFile file in files.Values)
+        {
+            FoodTagRegistry.LoadFrom(file);
+        }
     }
 
     private static readonly HashSet<string> ValidCategories = new() { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" };
@@ -520,6 +542,32 @@ public class DietSetupModSystem : ModSystem
         RegisterSelfCommand(api);
         RegisterHandbookPage(api);
         RegisterDiagCommand(api);
+        RegisterTagDiagCommand(api);
+    }
+
+    /// <summary>Diagnostic (prompt 5, ahead of the resolver): prints the resolved food-tag set
+    /// for the item in the caller's active hotbar slot, including live fresh/spoiled.</summary>
+    private void RegisterTagDiagCommand(ICoreClientAPI api)
+    {
+        api.ChatCommands.Create("diettags")
+            .WithDescription("Diagnostic: print the resolved food-tag set for the item in your active hotbar slot")
+            .HandleWith(args =>
+            {
+                ItemSlot? slot = api.World.Player?.Entity?.RightHandItemSlot;
+                if (slot?.Itemstack == null)
+                {
+                    return TextCommandResult.Success("Not holding an item.");
+                }
+
+                ulong mask = FoodTagRegistry.GetTagMask(api.World, slot, out bool determined);
+                if (!determined)
+                {
+                    return TextCommandResult.Success($"{slot.Itemstack.Collectible.Code}: transition state unavailable, try again.");
+                }
+
+                string tags = string.Join(", ", FoodTagRegistry.TagNames(mask));
+                return TextCommandResult.Success($"{slot.Itemstack.Collectible.Code}: {(tags.Length == 0 ? "(no tags)" : tags)}");
+            });
     }
 
     /// <summary>Diagnostic: with no argument, dumps the caller's resolved profile, category

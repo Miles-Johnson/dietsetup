@@ -1,0 +1,32 @@
+{
+  "source": {
+    "meat": ["game:redmeat-*", "game:bushmeat-*", "game:poultry-*", "game:pemmican-*"],
+    "organ": [],
+    "blood": [],
+    "carrion": ["game:carcass-*", "game:drycarcass-*"],
+    "fish": ["game:fish-*", "game:fishraw-*"],
+    "insect": ["game:insect-*"],
+    "egg": ["game:egg-*"],
+    "dairy": ["game:cheese-*", "game:milkportion*", "game:butter", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
+    "grain": ["game:bread-*", "game:flour-*", "game:grain-*"],
+    "root": ["game:vegetable-carrot*", "game:vegetable-turnip*", "game:vegetable-parsnip*", "game:vegetable-cassava*", "game:vegetable-cookedcattailroot*", "game:vegetable-cookedpapyrusroot*"],
+    "leaf": ["game:vegetable-cabbage*", "game:vegetable-fennel*"],
+    "fruit": ["game:fruit-*", "game:honeycomb", "game:vegetable-pumpkin*", "game:vegetable-bellpepper*", "game:vegetable-olive*"],
+    "seed": ["game:legume-*"],
+    "nut": ["game:treeseed-*-walnut"],
+    "fungus": ["game:mushroom-*"],
+    "sap": [],
+    "bone": ["game:bone-*", "game:bonemeal"],
+    "mineral": ["game:salt", "game:saltpeter"]
+  },
+  "state": {
+    "raw": ["game:*-raw"],
+    "cooked": ["game:*-cooked", "game:*-perfect", "game:*-boiled"],
+    "preserved": ["game:*-cured", "game:*-smoked", "game:*-dried", "game:pickledvegetable-*", "game:pickledlegume-*"]
+  },
+  "form": {
+    "whole": [],
+    "ground": ["game:flour-*", "game:bonemeal"],
+    "liquid": ["game:milkportion*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"]
+  }
+}
