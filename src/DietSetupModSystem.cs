@@ -6,6 +6,7 @@ using System.Reflection;
 using dietsetup.Diet;
 using dietsetup.Gui;
 using dietsetup.Network;
+using dietsetup.Rules;
 using dietsetup.Tags;
 using HarmonyLib;
 using Newtonsoft.Json.Linq;
@@ -96,14 +97,17 @@ public class DietSetupModSystem : ModSystem
         base.AssetsLoaded(api);
         LoadDietAssets(api);
         LoadFoodTagAssets(api);
+        LoadDietRuleAssets(api);
     }
 
     // Runs after AssetsLoaded, on both sides, once api.World.Collectibles is populated -- the
-    // earliest point the tag registry can walk every collectible and resolve static masks.
+    // earliest point the tag registry can walk every collectible and resolve static masks. Diet
+    // rules compile after that, since requires/excludes masks need FoodTagRegistry's tag bits final.
     public override void AssetsFinalize(ICoreAPI api)
     {
         base.AssetsFinalize(api);
         FoodTagRegistry.ResolveStaticTags(api);
+        DietRuleRegistry.CompileAll(api);
     }
 
     // TEMP, prompt-5 verification only -- remove before this lands. Called from GameReady, not
@@ -265,6 +269,19 @@ public class DietSetupModSystem : ModSystem
         foreach (FoodTagConfigFile file in files.Values)
         {
             FoodTagRegistry.LoadFrom(file);
+        }
+    }
+
+    /// <summary>Merges every domain's config/diets/*.json into the rules engine (prompt 6) --
+    /// pathBegins "config/diets/" catches every file under that folder across every domain, one
+    /// diet definition per file. Duplicate diet id across domains throws here (spec section 11:
+    /// hard error at startup, not a log-and-skip).</summary>
+    private static void LoadDietRuleAssets(ICoreAPI api)
+    {
+        Dictionary<AssetLocation, DietDefinitionFile> files = api.Assets.GetMany<DietDefinitionFile>(api.Logger, "config/diets/");
+        foreach ((AssetLocation loc, DietDefinitionFile file) in files)
+        {
+            DietRuleRegistry.LoadFrom(file, loc.Domain, api.Logger);
         }
     }
 
@@ -565,6 +582,7 @@ public class DietSetupModSystem : ModSystem
         RegisterHandbookPage(api);
         RegisterDiagCommand(api);
         RegisterTagDiagCommand(api);
+        RegisterDietResolveCommand(api);
     }
 
     /// <summary>Diagnostic (prompt 5, ahead of the resolver): prints the resolved food-tag set
@@ -589,6 +607,50 @@ public class DietSetupModSystem : ModSystem
 
                 string tags = string.Join(", ", FoodTagRegistry.TagNames(mask));
                 return TextCommandResult.Success($"{slot.Itemstack.Collectible.Code}: {(tags.Length == 0 ? "(no tags)" : tags)}");
+            });
+    }
+
+    /// <summary>Diagnostic (prompt 6): resolves the item in the caller's active hotbar slot
+    /// against their currently assigned diet (dietsetup:profile, same attribute the old
+    /// profile system uses -- prompt 6 has no assignment UI of its own yet) through the rules
+    /// engine, printing verdict, satiety, nutrition and every rule that matched. Optional dietId
+    /// overrides the assigned diet -- there's no assignment UI yet for rules-engine diet ids
+    /// (e.g. "goblin"), so without this override the command would be untestable.</summary>
+    private void RegisterDietResolveCommand(ICoreClientAPI api)
+    {
+        api.ChatCommands.Create("dietresolve")
+            .WithDescription("Diagnostic: resolve the item in your active hotbar slot through the rules engine, against your assigned diet or an optional override id")
+            .WithArgs(api.ChatCommands.Parsers.OptionalWord("dietId"))
+            .HandleWith(args =>
+            {
+                var playerEntity = api.World.Player?.Entity;
+                ItemSlot? slot = playerEntity?.RightHandItemSlot;
+                if (slot?.Itemstack == null)
+                {
+                    return TextCommandResult.Success("Not holding an item.");
+                }
+
+                string dietId = args[0] as string ?? playerEntity!.WatchedAttributes.GetString(AttrProfile, Config.DefaultProfileId);
+                CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
+                if (diet == null)
+                {
+                    return TextCommandResult.Success($"No rules-engine diet registered for id '{dietId}' yet -- the goblin/elf/orc port is a later migration step.");
+                }
+
+                var matchedRuleIndices = new List<int>();
+                DietResolveResult result = DietResolver.Resolve(api, api.World, slot, diet, playerEntity, 1f, matchedRuleIndices);
+                if (!result.Determined)
+                {
+                    return TextCommandResult.Success($"{slot.Itemstack.Collectible.Code}: transition state unavailable, try again.");
+                }
+
+                string ruleLabels = matchedRuleIndices.Count == 0
+                    ? "(none, default applied)"
+                    : string.Join(", ", matchedRuleIndices.Select(i => diet.Rules[i].DebugLabel));
+                string degradedNote = diet.Degraded ? " [DEGRADED: rule references a missing custom effect key, default behaviour applied]" : "";
+
+                return TextCommandResult.Success(
+                    $"{slot.Itemstack.Collectible.Code} vs diet '{dietId}'{degradedNote}: verdict={result.Verdict} satiety={result.Satiety:F2} nutrition={result.Nutrition:F2} matched=[{ruleLabels}]");
             });
     }
 

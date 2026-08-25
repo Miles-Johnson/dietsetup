@@ -1,0 +1,25 @@
+{
+  "_note": "Minimal seed diet, section 3's worked example only (meat / meat+spoiled). A later migration step replaces this with the full section 8 curve, the game:rot rule, and damage-none clamps.",
+  "id": "goblin",
+  "default": {
+    "verdict": "edible",
+    "satiety": { "flat": 1.0 },
+    "nutrition": { "flat": 1.0 }
+  },
+  "rules": [
+    {
+      "requires": ["meat"],
+      "priority": 0,
+      "verdict": "harmful",
+      "satiety": { "flat": -0.2 },
+      "nutrition": { "flat": 0.2 }
+    },
+    {
+      "requires": ["meat", "spoiled"],
+      "priority": 0,
+      "verdict": "nourishing",
+      "satiety": { "flat": 1.0 },
+      "nutrition": { "flat": 0.8 }
+    }
+  ]
+}

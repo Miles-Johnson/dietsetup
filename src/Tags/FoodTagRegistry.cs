@@ -70,6 +70,10 @@ public static class FoodTagRegistry
     public static EnumFoodCategory? NutrientBarFor(string sourceTag) =>
         SourceBar.TryGetValue(sourceTag, out EnumFoodCategory bar) ? bar : null;
 
+    /// <summary>Bit index for a registered tag name, for the rules engine to compile
+    /// requires/excludes into masks at load. False for an unregistered (likely typo'd) tag.</summary>
+    public static bool TryGetBit(string tag, out int bit) => tagBits.TryGetValue(tag, out bit);
+
     /// <summary>Merges one config/foodtags.json's worth of tag definitions into the registry.
     /// Every declared tag reserves a bit even with zero patterns, so a rule can reference a
     /// tag the current mod set has no matching item for yet (e.g. "organ") without erroring.</summary>
@@ -199,9 +203,16 @@ public static class FoodTagRegistry
     /// Perish transition) resolves to fresh on purpose, not a failure. determined is false only
     /// if the engine call itself threw. Gated to the same relevance check as ResolveStaticTags --
     /// otherwise requires: ["fresh"] would match every non-food collectible.</summary>
-    public static ulong GetTagMask(IWorldAccessor world, ItemSlot slot, out bool determined)
+    public static ulong GetTagMask(IWorldAccessor world, ItemSlot slot, out bool determined) =>
+        GetTagMask(world, slot, out _, out determined);
+
+    /// <summary>Same as <see cref="GetTagMask(IWorldAccessor, ItemSlot, out bool)"/>, plus the
+    /// raw 0..1 spoil level the rules engine's curves evaluate against -- callers that only need
+    /// the tag set (e.g. /diettags) can ignore it via the other overload.</summary>
+    public static ulong GetTagMask(IWorldAccessor world, ItemSlot slot, out float spoilLevel, out bool determined)
     {
         determined = true;
+        spoilLevel = 0f;
         ItemStack? stack = slot.Itemstack;
         if (stack?.Collectible == null) return 0;
 
@@ -222,7 +233,8 @@ public static class FoodTagRegistry
             return mask;
         }
 
-        mask |= 1UL << tagBits[transitionLevel > 0f ? SpoiledTag : FreshTag];
+        spoilLevel = transitionLevel ?? 0f;
+        mask |= 1UL << tagBits[spoilLevel > 0f ? SpoiledTag : FreshTag];
 
         return mask;
     }
