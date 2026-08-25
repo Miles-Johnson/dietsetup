@@ -131,6 +131,18 @@ public static class FoodTagRegistry
             patternArrays[tag] = patterns.ToArray();
         }
 
+        // whole has no patterns of its own (config/foodtags.json's "_note") -- an item-code
+        // wildcard can't express "not ground, not liquid, not meal", so it's the form-axis
+        // default here instead, for any already-relevant item matching none of the other three.
+        ulong formOtherMask = 0;
+        int wholeBit = -1;
+        foreach ((string tag, int bit) in tagBits)
+        {
+            if (!tagAxis.TryGetValue(tag, out FoodTagAxis axis) || axis != FoodTagAxis.Form) continue;
+            if (tag == "whole") { wholeBit = bit; continue; }
+            formOtherMask |= 1UL << bit;
+        }
+
         itemMasks = new ulong[api.World.Items.Count];
         blockMasks = new ulong[api.World.Blocks.Count];
 
@@ -147,6 +159,12 @@ public static class FoodTagRegistry
                 {
                     mask |= 1UL << tagBits[tag];
                 }
+            }
+
+            bool relevant = (mask & sourceAxisMask) != 0 || collectible.NutritionProps != null;
+            if (wholeBit >= 0 && relevant && (mask & formOtherMask) == 0)
+            {
+                mask |= 1UL << wholeBit;
             }
 
             if (collectible is Block)

@@ -1,4 +1,5 @@
 {
+  "_note": "whole has no patterns here on purpose. A wildcard on item code can't express 'not ground, not liquid, not meal', so FoodTagRegistry.ResolveStaticTags applies whole as the form-axis default instead: any collectible with a source tag or vanilla nutrition that matches none of ground/liquid/meal gets whole.",
   "source": {
     "meat": ["game:redmeat-*", "game:bushmeat-*", "game:poultry-*", "game:pemmican-*"],
     "organ": [],
@@ -16,6 +17,7 @@
     "nut": ["game:treeseed-*-walnut"],
     "fungus": ["game:mushroom-*"],
     "sap": [],
+    "resin": ["game:resin*"],
     "bone": ["game:bone-*", "game:bonemeal"],
     "mineral": ["game:salt", "game:saltpeter"]
   },
@@ -27,6 +29,7 @@
   "form": {
     "whole": [],
     "ground": ["game:flour-*", "game:bonemeal"],
-    "liquid": ["game:milkportion*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"]
+    "liquid": ["game:milkportion*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
+    "meal": ["game:bowl-*-meal", "game:pie-*"]
   }
 }
