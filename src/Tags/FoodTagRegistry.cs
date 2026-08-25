@@ -21,6 +21,10 @@ public static class FoodTagRegistry
     private static readonly Dictionary<string, FoodTagAxis> tagAxis = new();
     private static readonly Dictionary<string, List<string>> tagPatterns = new();
 
+    // Keyed by (isBlock, id) -- Item.Id and Block.Id share the same low-id range (see
+    // itemMasks/blockMasks note below), so a plain id would conflate an item and a block.
+    private static readonly HashSet<(bool isBlock, int id)> loggedTransitionFailures = new();
+
     // Item.Id and Block.Id are separate id spaces (both start near 0) -- api.World.Collectibles
     // is just Items followed by Blocks, so a single array indexed by CollectibleObject.Id would
     // have every low item id silently overwritten by an unrelated block sharing that same id.
@@ -210,15 +214,23 @@ public static class FoodTagRegistry
         {
             transitionLevel = stack.Collectible.UpdateAndGetTransitionState(world, slot, EnumTransitionType.Perish)?.TransitionLevel;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             determined = false;
+            LogTransitionFailureOnce(world, stack.Collectible, ex);
             return mask;
         }
 
         mask |= 1UL << tagBits[transitionLevel > 0f ? SpoiledTag : FreshTag];
 
         return mask;
+    }
+
+    private static void LogTransitionFailureOnce(IWorldAccessor world, CollectibleObject collectible, Exception ex)
+    {
+        var key = (collectible is Block, collectible.Id);
+        if (!loggedTransitionFailures.Add(key)) return;
+        world.Logger.Error("[dietsetup] GetTagMask: transition state read failed for '{0}': {1}", collectible.Code, ex);
     }
 
     public static IEnumerable<string> TagNames(ulong mask)
