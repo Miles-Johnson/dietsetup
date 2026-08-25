@@ -2,6 +2,7 @@
   "mushroom": ["game:mushroom-*"],
   "cheese": ["game:cheese-*"],
   "bread": ["game:bread-*"],
+  "grain": ["game:bread-*", "game:flour-*"],
   "fat": ["game:fat-*"],
   "insect": ["game:insect-*"],
   "egg": ["game:egg-*"],

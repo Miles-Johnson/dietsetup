@@ -49,6 +49,22 @@ Mod authors can also call `DietProfileRegistry.RegisterProfile`/`RegisterTag`/`R
 directly to add their own content. This API is functional but not yet considered stable —
 expect it to evolve.
 
+### Per-tag intake accumulator
+
+For race mods that want to read "how much of tag X has this player recently eaten" without a
+dependency on dietsetup, each player entity carries a decaying WatchedAttributes pair per tag:
+
+| Key | Type | Units |
+|---|---|---|
+| `dietsetup:intake:<tag>` | double | 0..cap, unitless (0 = none eaten recently, cap = saturated) |
+| `dietsetup:intake:<tag>:updatedHours` | double | `world.Calendar.TotalHours` at the last write |
+
+Only `dietsetup:intake:rot` is written in v1. The value decays exponentially on an in-game
+calendar-hour half-life (not real time); a reader computes the live value on demand from the raw
+value and the elapsed hours since `updatedHours` — see `rfmechanics`' `GoblinRotAuraBehavior.
+ReadLiveRotIntake` for a worked example. This key shape is a public, stable contract: renaming or
+restructuring it breaks any mod already reading it.
+
 ## Known limitations
 
 - **Meals don't respect custom diet profiles yet.** A cooked meal's nutrition currently uses

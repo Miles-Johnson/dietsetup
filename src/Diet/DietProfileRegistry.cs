@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using dietsetup;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Util;
@@ -347,12 +348,16 @@ public static class DietProfileRegistry
             return 1f;
         }
 
+        float floor = DietSetupModSystem.Config.TagMultiplierFloor;
         float mult = 1f;
         foreach (string tag in tags)
         {
             if (tagStatKeys.TryGetValue(tag, out string? statKey))
             {
-                mult *= forEntity.Stats.GetBlended(statKey);
+                // Floor before multiplying, not after: stacked negative trait deltas on a single
+                // tag can blend below 0, and multiplying two already-negative tags back to
+                // positive would hide that instead of correcting it.
+                mult *= Math.Max(floor, forEntity.Stats.GetBlended(statKey));
             }
         }
         return mult;

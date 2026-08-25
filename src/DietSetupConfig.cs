@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace dietsetup;
 
@@ -18,6 +19,12 @@ public class DietSetupConfig
     /// <summary>Profile id assigned to a player before they've ever picked one (and used by "Use Defaults" in the dialog). Must match a registered DietProfile.Id.</summary>
     public string DefaultProfileId { get; set; } = "balanced";
 
+    /// <summary>Floor applied to each blended "dietsetup:&lt;tag&gt;Mult" entity stat before it
+    /// multiplies into GetTagMultiplier's result. Without it, stacked negative trait deltas on a
+    /// single tag can blend below 0 (WeightedSum base 1 + deltas), and a negative multiplier
+    /// would remove food instead of granting none.</summary>
+    public float TagMultiplierFloor { get; set; } = 0f;
+
     // ── Rot intake (Phase G3, for rfmechanics' goblin rot aura) ──
 
     /// <summary>Master toggle for rot-intake accrual (RotIntakeAccrualPatch). If false, every eat is a no-op for the accumulator -- it neither rises nor decays.</summary>
@@ -28,8 +35,9 @@ public class DietSetupConfig
 
     /// <summary>Exponential decay half-life on the in-game calendar clock (not real-world time) --
     /// the write side has no tick loop, and calendar-hours is already food's own rot clock, free
-    /// on both read and write sides. Must match rfmechanics' GoblinRotAuraIntakeHalfLifeHours exactly.</summary>
-    public double RotIntakeHalfLifeHours { get; set; } = 48.0;
+    /// on both read and write sides. Keyed by intake tag ("rot" is the only tag written in v1).
+    /// The "rot" entry must match rfmechanics' own GoblinRotAuraIntakeHalfLifeHours exactly.</summary>
+    public Dictionary<string, double> IntakeHalfLifeHours { get; set; } = new() { ["rot"] = 48.0 };
 
     /// <summary>Accumulator ceiling.</summary>
     public double RotIntakeCap { get; set; } = 1.0;
@@ -45,7 +53,7 @@ public class DietSetupConfig
 
     /// <summary>Trait code identifying the goblin race. Must match rfmechanics' own
     /// RFMechanicsConfig.GoblinTraitCode default -- duplicated rather than assembly-linked, same
-    /// as RotIntakeHalfLifeHours / GoblinRotAuraIntakeHalfLifeHours above.</summary>
+    /// as IntakeHalfLifeHours["rot"] / GoblinRotAuraIntakeHalfLifeHours above.</summary>
     public string GoblinTraitCode { get; set; } = "rf-goblin-positive";
 
     /// <summary>Satiety multiplier at TransitionLevel 1.0 (fully rotten, pre-transformation into

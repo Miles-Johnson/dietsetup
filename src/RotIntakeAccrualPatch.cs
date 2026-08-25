@@ -9,13 +9,22 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// Shared accrual formula for the two patches below. Phase G3: accrues a rot-intake accumulator
-/// (DietSetupModSystem.AttrRotIntake) on eat completion, for rfmechanics' goblin rot aura to read
-/// back. Decay-then-add on the in-game calendar clock. Details:
-/// notes/dietsetup-patch-internals.md#rot-intake-accrual--rotintakeaccrualpatchcs.
+/// Public API: dietsetup writes a decaying per-player "intake" counter for how much of a food
+/// tag a player has recently eaten, exposed as WatchedAttributes keys any mod can read by
+/// string, no assembly reference required --
+///   "dietsetup:intake:&lt;tag&gt;"              double, 0..DietSetupConfig.RotIntakeCap, unitless
+///   "dietsetup:intake:&lt;tag&gt;:updatedHours"  double, world.Calendar.TotalHours at last write
+/// Only "rot" is written in v1 (Phase G3, for rfmechanics' goblin rot aura). Renaming either key
+/// shape breaks that consumer -- see README.md.
+///
+/// Shared accrual formula for the two patches below. Decay-then-add on the in-game calendar
+/// clock. Details: notes/dietsetup-patch-internals.md#rot-intake-accrual--rotintakeaccrualpatchcs.
 /// </summary>
 internal static class RotIntakeAccrual
 {
+    private const string Tag = "rot";
+    private const double DefaultHalfLifeHours = 48.0;
+
     /// <summary>transitionLevel &lt;= 0 (fresh food) contributes nothing and skips the write
     /// entirely -- eating fresh food should not decay the accumulator faster than time alone
     /// already does.</summary>
@@ -28,14 +37,17 @@ internal static class RotIntakeAccrual
 
         ITreeAttribute wa = player.WatchedAttributes;
         double nowHours = player.World.Calendar.TotalHours;
-        double lastHours = wa.GetDouble(DietSetupModSystem.AttrRotIntakeUpdatedHours, nowHours);
-        double raw = wa.GetDouble(DietSetupModSystem.AttrRotIntake, 0.0);
+        string valueKey = DietSetupModSystem.AttrIntake(Tag);
+        string updatedKey = DietSetupModSystem.AttrIntakeUpdatedHours(Tag);
+        double lastHours = wa.GetDouble(updatedKey, nowHours);
+        double raw = wa.GetDouble(valueKey, 0.0);
 
-        double decayed = raw * Math.Pow(0.5, Math.Max(0.0, nowHours - lastHours) / cfg.RotIntakeHalfLifeHours);
+        double halfLife = cfg.IntakeHalfLifeHours.TryGetValue(Tag, out double h) ? h : DefaultHalfLifeHours;
+        double decayed = raw * Math.Pow(0.5, Math.Max(0.0, nowHours - lastHours) / halfLife);
         double next = Math.Min(cfg.RotIntakeCap, decayed + cfg.RotIntakePerBite * transitionLevel);
 
-        wa.SetDouble(DietSetupModSystem.AttrRotIntake, next);
-        wa.SetDouble(DietSetupModSystem.AttrRotIntakeUpdatedHours, nowHours);
+        wa.SetDouble(valueKey, next);
+        wa.SetDouble(updatedKey, nowHours);
     }
 }
 

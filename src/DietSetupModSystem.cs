@@ -26,11 +26,18 @@ public class DietSetupModSystem : ModSystem
     public const string AttrConfigured = "dietsetup:configured";
     public const string AttrAllowSelOnce = "dietsetup:allowselonce";
 
-    // Rot-intake accumulator (Phase G3, for rfmechanics' goblin rot aura). Raw value + a
-    // world.Calendar.TotalHours timestamp so any external reader (no assembly reference needed)
-    // can compute the live, continuously-decaying value on demand with no tick loop either side.
-    public const string AttrRotIntake = "dietsetup:rotIntake";
-    public const string AttrRotIntakeUpdatedHours = "dietsetup:rotIntakeUpdatedHours";
+    // Public API: per-tag intake accumulator (Phase G3, for rfmechanics' goblin rot aura; "rot"
+    // is the only tag written in v1). Raw value + a world.Calendar.TotalHours timestamp so any
+    // external reader (no assembly reference needed) can compute the live, continuously-decaying
+    // value on demand with no tick loop either side. Key shape and units are a cross-mod contract
+    // -- see README.md.
+    public static string AttrIntake(string tag) => $"dietsetup:intake:{tag}";
+    public static string AttrIntakeUpdatedHours(string tag) => $"dietsetup:intake:{tag}:updatedHours";
+
+    // Old single-tag intake keys, pre-dating the "dietsetup:intake:<tag>" rename. Migrated once
+    // per player in MigrateLegacyRotIntakeIfNeeded, then never read/written again.
+    private const string OldAttrRotIntake = "dietsetup:rotIntake";
+    private const string OldAttrRotIntakeUpdatedHours = "dietsetup:rotIntakeUpdatedHours";
 
     // Old flat-multiplier keys from the pre-rewrite system. Left in place, unread except by
     // DietMigration (which reads them fresh on every resolve for a "legacy_custom" player) and
@@ -295,6 +302,37 @@ public class DietSetupModSystem : ModSystem
         RegisterDrainSatietyCommand(api);
         RegisterTagMultCommand(api);
         RegisterRotIntakeDebugCommand(api);
+
+        // GameReady, not AssetsFinalize -- CharacterSystem.traits is populated by its own
+        // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
+        // calls. GameReady is the next phase, guaranteeing LoadGamePre has fully completed first.
+        api.Event.ServerRunPhase(EnumServerRunPhase.GameReady, () => ValidateTraitKeys(api));
+    }
+
+    /// <summary>Cross-checks every "dietsetup:&lt;tag&gt;Mult" stat key any registered trait
+    /// writes against the registered tag set, logging unmatched keys. Log only -- a third-party
+    /// mod may register a tag we don't know about yet at this point in load order, and a typo'd
+    /// key should never disable the trait it's attached to.</summary>
+    private static void ValidateTraitKeys(ICoreServerAPI api)
+    {
+        CharacterSystem? charSys = api.ModLoader.GetModSystem<CharacterSystem>();
+        if (charSys == null) return;
+
+        var knownTags = new HashSet<string>(DietProfileRegistry.AllTagNames);
+        foreach (Trait trait in charSys.traits)
+        {
+            if (trait.Attributes == null) continue;
+            foreach (string key in trait.Attributes.Keys)
+            {
+                if (!key.StartsWith("dietsetup:", StringComparison.Ordinal) || !key.EndsWith("Mult", StringComparison.Ordinal)) continue;
+
+                string tag = key.Substring("dietsetup:".Length, key.Length - "dietsetup:".Length - "Mult".Length);
+                if (!knownTags.Contains(tag))
+                {
+                    api.Logger.Warning("[dietsetup] Trait '{0}' writes stat key '{1}', which does not match any tag in tags.json -- likely a typo.", trait.Code, key);
+                }
+            }
+        }
     }
 
     private void OnPlayerCreate(IServerPlayer byPlayer)
@@ -305,6 +343,7 @@ public class DietSetupModSystem : ModSystem
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)
     {
         MigrateLegacyProfileIfNeeded(byPlayer);
+        MigrateLegacyRotIntakeIfNeeded(byPlayer);
 
         if (!Config.EnableDietSystem || !Config.AutoPromptNewCharacters) return;
         if (!byPlayer.GetModData(PendingModDataKey, false)) return;
@@ -323,6 +362,23 @@ public class DietSetupModSystem : ModSystem
 
         wa.SetString(AttrProfile, DietMigration.LegacyCustomProfileId);
         wa.SetBool(AttrConfigured, true);
+    }
+
+    /// <summary>One-time copy of the pre-rename "dietsetup:rotIntake" pair to
+    /// "dietsetup:intake:rot", idempotent via the old attribute's presence check.</summary>
+    private static void MigrateLegacyRotIntakeIfNeeded(IServerPlayer byPlayer)
+    {
+        ITreeAttribute wa = byPlayer.Entity.WatchedAttributes;
+        if (!wa.HasAttribute(OldAttrRotIntake)) return;
+
+        wa.SetDouble(AttrIntake("rot"), wa.GetDouble(OldAttrRotIntake, 0.0));
+        wa.RemoveAttribute(OldAttrRotIntake);
+
+        if (wa.HasAttribute(OldAttrRotIntakeUpdatedHours))
+        {
+            wa.SetDouble(AttrIntakeUpdatedHours("rot"), wa.GetDouble(OldAttrRotIntakeUpdatedHours, 0.0));
+            wa.RemoveAttribute(OldAttrRotIntakeUpdatedHours);
+        }
     }
 
     private void OnDietSelectionReceived(IServerPlayer fromPlayer, DietSelectionPacket packet)
@@ -428,26 +484,29 @@ public class DietSetupModSystem : ModSystem
     private void RegisterRotIntakeDebugCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietrotintake")
-            .WithDescription("Debug: get/set/clear your own rot-intake accumulator (dietsetup:rotIntake), for testing rfmechanics' goblin rot aura without eating rotten food and waiting for decay.")
+            .WithDescription("Debug: get/set/clear your own rot-intake accumulator (dietsetup:intake:rot), for testing rfmechanics' goblin rot aura without eating rotten food and waiting for decay.")
             .RequiresPrivilege(Privilege.controlserver)
             .WithArgs(api.ChatCommands.Parsers.OptionalFloat("value"))
             .HandleWith(args =>
             {
                 IPlayer caller = args.Caller.Player;
                 ITreeAttribute wa = caller.Entity.WatchedAttributes;
+                string valueKey = AttrIntake("rot");
+                string updatedKey = AttrIntakeUpdatedHours("rot");
+                double halfLife = Config.IntakeHalfLifeHours.TryGetValue("rot", out double h) ? h : 48.0;
 
                 if (args.Parsers[0].IsMissing)
                 {
                     double nowHours = caller.Entity.World.Calendar.TotalHours;
-                    double lastHours = wa.GetDouble(AttrRotIntakeUpdatedHours, nowHours);
-                    double raw = wa.GetDouble(AttrRotIntake, 0.0);
-                    return TextCommandResult.Success($"{AttrRotIntake}={raw:F4}, elapsed {nowHours - lastHours:F2}h since last write (halfLife={Config.RotIntakeHalfLifeHours:F1}h).");
+                    double lastHours = wa.GetDouble(updatedKey, nowHours);
+                    double raw = wa.GetDouble(valueKey, 0.0);
+                    return TextCommandResult.Success($"{valueKey}={raw:F4}, elapsed {nowHours - lastHours:F2}h since last write (halfLife={halfLife:F1}h).");
                 }
 
                 float value = (float)args[0];
-                wa.SetDouble(AttrRotIntake, value);
-                wa.SetDouble(AttrRotIntakeUpdatedHours, caller.Entity.World.Calendar.TotalHours);
-                return TextCommandResult.Success($"Set {AttrRotIntake}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
+                wa.SetDouble(valueKey, value);
+                wa.SetDouble(updatedKey, caller.Entity.World.Calendar.TotalHours);
+                return TextCommandResult.Success($"Set {valueKey}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
             });
     }
 
