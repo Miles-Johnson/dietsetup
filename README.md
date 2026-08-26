@@ -45,10 +45,13 @@ e.g. `preserved`, `grain`). Applies to both satiety and nutrient-bar gain. **Imp
 stats blend additively from a base of `1`, so a delta of `0.3` produces a **1.3x** multiplier —
 pass `0.3` for "+30% benefit," not `1.3`.
 
-Mod authors can call `DietProfileRegistry.RegisterProfile` to add their own profiles, and ship a
-`config/foodtags.json` in their own domain to add tags/patterns (merged via `Api.Assets.GetMany`,
-so no code dependency on dietsetup is needed for tags). This API is functional but not yet
-considered stable — expect it to evolve.
+Mod authors can call `DietProfileRegistry.RegisterProfile` to add their own profiles at runtime,
+or ship a `config/profiles.json` in their own domain (merged via `Api.Assets.GetMany`, same as
+`config/foodtags.json` below — no code dependency on dietsetup needed either way). A duplicate
+profile `Id` across two domains is a hard startup error naming both. This API is functional but
+not yet considered stable — expect it to evolve.
+
+`raceframework` ships its Elf profile this way — see `config/profiles.json` in its own assets.
 
 ### Per-tag intake accumulator
 

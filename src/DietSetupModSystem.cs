@@ -231,17 +231,30 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    /// <summary>Loads shipped profiles through the same RegisterProfile call a third-party mod
-    /// would use. Runs on both sides (Start fires for client and server) since the Harmony
-    /// patches and tooltip resolution both need the registry client-side too. Tag content is
-    /// FoodTagRegistry's job now (LoadFoodTagAssets, config/foodtags.json) -- the old
-    /// config/tags.json mechanism was retired in tag-engine migration step 9.</summary>
+    /// <summary>Merges every domain's config/profiles.json into the registry (tag-engine
+    /// migration step 10) -- GetMany, not Get, so a race mod can ship its own profile (e.g.
+    /// raceframework's Elf) with zero dietsetup code dependency, same pattern as
+    /// LoadFoodTagAssets/LoadDietRuleAssets. A duplicate Id across domains is a hard error naming
+    /// both, mirroring DietRuleRegistry.LoadFrom's duplicate-diet-id check -- same undebuggable
+    /// last-writer-wins failure mode. Tag content is FoodTagRegistry's job now
+    /// (LoadFoodTagAssets, config/foodtags.json) -- the old config/tags.json mechanism was retired
+    /// in tag-engine migration step 9.</summary>
     private static void LoadDietAssets(ICoreAPI api)
     {
-        DietProfile[]? profiles = api.Assets.Get(new AssetLocation("dietsetup", "config/profiles.json")).ToObject<DietProfile[]>();
-        foreach (DietProfile profile in profiles ?? Array.Empty<DietProfile>())
+        Dictionary<AssetLocation, DietProfile[]> files = api.Assets.GetMany<DietProfile[]>(api.Logger, "config/profiles.json");
+        var domainById = new Dictionary<string, string>();
+        foreach ((AssetLocation loc, DietProfile[] profiles) in files)
         {
-            DietProfileRegistry.RegisterProfile(profile);
+            foreach (DietProfile profile in profiles ?? Array.Empty<DietProfile>())
+            {
+                if (domainById.TryGetValue(profile.Id, out string? existingDomain))
+                {
+                    throw new InvalidOperationException(
+                        $"[dietsetup] Duplicate profile id '{profile.Id}' -- registered by both domain '{existingDomain}' and domain '{loc.Domain}'.");
+                }
+                domainById[profile.Id] = loc.Domain;
+                DietProfileRegistry.RegisterProfile(profile);
+            }
         }
 
         ValidateContent(api);
