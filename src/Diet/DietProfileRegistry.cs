@@ -39,6 +39,12 @@ public static class DietProfileRegistry
     /// player's entry doesn't sit in this dictionary forever.</summary>
     public static void RemoveNutritionMultiplierQueue(long entityId) => PendingNutritionMultipliers.Remove(entityId);
 
+    // One-shot per entity for ResolveProfileForEntity's orphaned-profile-id warning (server side
+    // only -- see the Side gate there for why, same client/server static-state sharing as above).
+    private static readonly HashSet<long> warnedMissingProfileEntities = new();
+
+    public static void ClearWarnedMissingProfile(long entityId) => warnedMissingProfileEntities.Remove(entityId);
+
     internal static void EnqueueNutritionMultiplier(long entityId, float value)
     {
         if (!PendingNutritionMultipliers.TryGetValue(entityId, out Queue<float>? queue))
@@ -148,7 +154,22 @@ public static class DietProfileRegistry
         {
             return DietMigration.BuildLegacyCustomProfile(entity.WatchedAttributes);
         }
-        return GetProfile(profileId) ?? GetProfile(defaultProfileId) ?? PassThroughProfile;
+
+        DietProfile? resolved = GetProfile(profileId);
+        if (resolved != null) return resolved;
+
+        DietProfile? fallback = GetProfile(defaultProfileId);
+        if (profileId != defaultProfileId && entity.Api?.Side == EnumAppSide.Server
+            && warnedMissingProfileEntities.Add(entity.EntityId))
+        {
+            string outcome = fallback != null
+                ? $"falling back to defaultProfileId '{defaultProfileId}'"
+                : $"defaultProfileId '{defaultProfileId}' is also not loaded -- resolving as pure vanilla nutrition, no diet effects";
+            entity.Api?.Logger.Warning(
+                "[dietsetup] Entity {0} has dietsetup:profile '{1}', which is not a loaded profile -- {2}.",
+                entity.EntityId, profileId, outcome);
+        }
+        return fallback ?? PassThroughProfile;
     }
 
     private static readonly DietProfile PassThroughProfile = new() { Id = "__passthrough", HiddenFromPicker = true };

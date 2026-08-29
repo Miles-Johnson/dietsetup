@@ -396,6 +396,7 @@ public class DietSetupModSystem : ModSystem
     private static void OnPlayerDisconnect(IServerPlayer byPlayer)
     {
         DietProfileRegistry.RemoveNutritionMultiplierQueue(byPlayer.Entity.EntityId);
+        DietProfileRegistry.ClearWarnedMissingProfile(byPlayer.Entity.EntityId);
     }
 
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)
