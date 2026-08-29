@@ -23,6 +23,13 @@ public static class DietRuleRegistry
 
     public static IEnumerable<CompiledDiet> PickerDiets => compiled.Values.Where(d => !d.HiddenFromPicker);
 
+    /// <summary>Clears raw before a reload pass -- singleplayer's client and server
+    /// DietSetupModSystem instances (see class doc) share this static state, so without this a
+    /// second LoadFrom pass over the same files hits LoadFrom's duplicate-id guard and throws
+    /// instead of accepting a legitimate reload. Call once per pass, before the domain loop, so
+    /// the duplicate-id check below still catches a genuine cross-domain collision within one pass.</summary>
+    internal static void Reset() => raw.Clear();
+
     public static void LoadFrom(DietDefinitionFile file, string domain, ILogger logger)
     {
         if (string.IsNullOrEmpty(file.Id))

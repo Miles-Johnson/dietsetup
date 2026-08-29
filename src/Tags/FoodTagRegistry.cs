@@ -74,6 +74,24 @@ public static class FoodTagRegistry
 
     public static IEnumerable<string> AllTagNames => tagBits.Keys;
 
+    /// <summary>Clears tag state before a reload pass -- mirrors DietRuleRegistry.Reset /
+    /// DietProfileRegistry.Reset. Bit indices are being redefined from scratch, so tagStatKeysByBit
+    /// and sourceAxisMask (both keyed/accumulated by bit position) must reset too, not just the two
+    /// dictionaries -- a stale sourceAxisMask bit surviving a bit-position shift would corrupt every
+    /// mask computed afterward. Re-seeds fresh/spoiled at bits 0/1 immediately after, since the
+    /// static constructor that normally reserves them only ever runs once per process.</summary>
+    internal static void Reset()
+    {
+        tagBits.Clear();
+        tagAxis.Clear();
+        tagPatterns.Clear();
+        Array.Clear(tagStatKeysByBit, 0, tagStatKeysByBit.Length);
+        sourceAxisMask = 0;
+
+        EnsureBit(FreshTag, FoodTagAxis.State);
+        EnsureBit(SpoiledTag, FoodTagAxis.State);
+    }
+
     public static EnumFoodCategory? NutrientBarFor(string sourceTag) =>
         SourceBar.TryGetValue(sourceTag, out EnumFoodCategory bar) ? bar : null;
 

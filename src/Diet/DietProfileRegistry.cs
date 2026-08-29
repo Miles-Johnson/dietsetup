@@ -20,6 +20,13 @@ public static class DietProfileRegistry
 {
     private static readonly Dictionary<string, DietProfile> profiles = new();
 
+    /// <summary>Clears profiles before a reload pass -- mirrors DietRuleRegistry.Reset. Needed even
+    /// though RegisterProfile's indexer assignment doesn't throw on a repeat id: without this,
+    /// LoadDietAssets's own domainById duplicate check (scoped to one call) can't catch a duplicate
+    /// profile id introduced by a second, later call from the other side's DietSetupModSystem
+    /// instance -- it would just silently overwrite instead.</summary>
+    internal static void Reset() => profiles.Clear();
+
     // Per-entity FIFO of combined nutrition-gain multipliers (tag-fold * rule-matched Nutrition),
     // one entry per real eaten ingredient, consumed in order by DietSaturationScalePatch. Server
     // side only (see the enqueue sites' IServerWorldAccessor guard) -- a client-side tooltip

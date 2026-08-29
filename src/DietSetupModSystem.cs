@@ -241,6 +241,7 @@ public class DietSetupModSystem : ModSystem
     /// in tag-engine migration step 9.</summary>
     private static void LoadDietAssets(ICoreAPI api)
     {
+        DietProfileRegistry.Reset();
         Dictionary<AssetLocation, DietProfile[]> files = api.Assets.GetMany<DietProfile[]>(api.Logger, "config/profiles.json");
         var domainById = new Dictionary<string, string>();
         foreach ((AssetLocation loc, DietProfile[] profiles) in files)
@@ -265,6 +266,7 @@ public class DietSetupModSystem : ModSystem
     /// dietsetup's own file. dietsetup ships the vanilla tags only.</summary>
     private static void LoadFoodTagAssets(ICoreAPI api)
     {
+        FoodTagRegistry.Reset();
         Dictionary<AssetLocation, FoodTagConfigFile> files = api.Assets.GetMany<FoodTagConfigFile>(api.Logger, "config/foodtags.json");
         foreach (FoodTagConfigFile file in files.Values)
         {
@@ -278,6 +280,7 @@ public class DietSetupModSystem : ModSystem
     /// hard error at startup, not a log-and-skip).</summary>
     private static void LoadDietRuleAssets(ICoreAPI api)
     {
+        DietRuleRegistry.Reset();
         Dictionary<AssetLocation, DietDefinitionFile> files = api.Assets.GetMany<DietDefinitionFile>(api.Logger, "config/diets/");
         foreach ((AssetLocation loc, DietDefinitionFile file) in files)
         {
