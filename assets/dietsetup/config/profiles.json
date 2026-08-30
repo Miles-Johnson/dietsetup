@@ -3,11 +3,11 @@
     "Id": "balanced",
     "NameLangCode": "dietsetup:profile-balanced",
     "CategoryDefaults": {
-      "Fruit": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
-      "Vegetable": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
-      "Protein": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
-      "Grain": { "SatietyMult": 0.4, "NutritionMult": 0.4 },
-      "Dairy": { "SatietyMult": 0.4, "NutritionMult": 0.4 }
+      "Fruit": { "SatietyMult": 1.0, "NutritionMult": 1.0 },
+      "Vegetable": { "SatietyMult": 1.0, "NutritionMult": 1.0 },
+      "Protein": { "SatietyMult": 1.0, "NutritionMult": 1.0 },
+      "Grain": { "SatietyMult": 1.0, "NutritionMult": 1.0 },
+      "Dairy": { "SatietyMult": 1.0, "NutritionMult": 1.0 }
     }
   },
   {
