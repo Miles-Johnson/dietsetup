@@ -1,25 +1,20 @@
 namespace dietsetup.Rules;
 
-/// <summary>Per-bite, per-ingredient answer from DietResolver.Resolve. No allocation on the
-/// hot path -- see DietResolver's matchedRuleIndices param for the diagnostic-only alternative.</summary>
+/// <summary>Answer from DietResolver.Resolve. Satiety/Nutrition are multipliers, not absolute
+/// values -- a caller multiplies them into the food's own vanilla value (architecture 5.3's "apply"
+/// step). Health is never carried here; it derives from capacity and is never authored (5.1).</summary>
 public readonly struct DietResolveResult
 {
-    public static readonly DietResolveResult Undetermined = new(false, DietVerdict.Edible, 0f, 0f, 0f, 0f);
-
-    public readonly bool Determined;
     public readonly DietVerdict Verdict;
     public readonly float Satiety;
     public readonly float Nutrition;
-    public readonly float DamageMagnitude;
-    public readonly float DamageDurationSec;
+    public readonly CompiledEffect[] Effects;
 
-    public DietResolveResult(bool determined, DietVerdict verdict, float satiety, float nutrition, float damageMagnitude, float damageDurationSec)
+    public DietResolveResult(DietVerdict verdict, float satiety, float nutrition, CompiledEffect[] effects)
     {
-        Determined = determined;
         Verdict = verdict;
         Satiety = satiety;
         Nutrition = nutrition;
-        DamageMagnitude = damageMagnitude;
-        DamageDurationSec = damageDurationSec;
+        Effects = effects;
     }
 }

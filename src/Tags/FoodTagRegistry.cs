@@ -68,6 +68,10 @@ public static class FoodTagRegistry
 
     public static IEnumerable<string> AllTagNames => tagBits.Keys;
 
+    /// <summary>Collectibles with NutritionProps but no source tag, recomputed each
+    /// ResolveStaticTags pass (architecture section 8's load-log line).</summary>
+    public static int UntaggedNutritiousCount { get; private set; }
+
     /// <summary>Clears tag state before a reload pass -- mirrors DietRuleRegistry.Reset.
     /// sourceAxisMask (accumulated by bit position) must reset too, not just the two
     /// dictionaries -- a stale sourceAxisMask bit surviving a bit-position shift would corrupt every
@@ -184,6 +188,7 @@ public static class FoodTagRegistry
 
         itemMasks = new ulong[api.World.Items.Count];
         blockMasks = new ulong[api.World.Blocks.Count];
+        UntaggedNutritiousCount = 0;
 
         foreach (CollectibleObject collectible in api.World.Collectibles)
         {
@@ -217,6 +222,7 @@ public static class FoodTagRegistry
 
             if (collectible.NutritionProps != null && (mask & sourceAxisMask) == 0)
             {
+                UntaggedNutritiousCount++;
                 api.Logger.Warning("[dietsetup] Collectible '{0}' has nutrition properties but no source tag in the food tag registry.", codeStr);
             }
         }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "dev-inedible-fixture",
+  "id": "base",
   "categories": {
     "Fruit": { "capacity": 1.0 },
     "Vegetable": { "capacity": 1.0 },
@@ -9,13 +9,5 @@
     "Dairy": { "capacity": 1.0 }
   },
   "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
-  "rules": [
-    {
-      "requires": ["fruit"],
-      "priority": 0,
-      "verdict": "inedible",
-      "satietyMult": 0.0,
-      "nutritionMult": 0.0
-    }
-  ]
+  "rules": []
 }

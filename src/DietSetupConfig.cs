@@ -41,4 +41,8 @@ public class DietSetupConfig
     /// step 9) -- a meal has at most a handful of ingredients, so this bounds any future
     /// producer/consumer mismatch from growing unbounded rather than reflecting a real limit.</summary>
     public int NutritionMultiplierQueueCap { get; set; } = 16;
+
+    /// <summary>Floor applied to a nonzero category capacity below it (architecture 5.6). Below
+    /// this the nutrition gain scale (1/capacity) exceeds 20x and one bite fills a bar from empty.</summary>
+    public float CapacityFloor { get; set; } = 0.05f;
 }

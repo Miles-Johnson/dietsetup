@@ -70,45 +70,15 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    // Mod-shipped assets aren't indexed yet during Start() -- api.Assets.Get() throws for
-    // anything but a base asset then. AssetsLoaded() runs after asset origins are fully
-    // initialized, still before StartServerSide/StartClientSide, so the registry is ready for both.
-    public override void AssetsLoaded(ICoreAPI api)
-    {
-        base.AssetsLoaded(api);
-        LoadFoodTagAssets(api);
-        LoadDietRuleAssets(api);
-    }
-
-    // Runs after AssetsLoaded, on both sides, once api.World.Collectibles is populated -- the
-    // earliest point the tag registry can walk every collectible and resolve static masks. Diet
-    // rules compile after that, since requires/excludes masks need FoodTagRegistry's tag bits final.
+    // Runs after asset origins are fully initialized (still before Start*Side), once
+    // api.World.Collectibles is populated -- the earliest point the whole 8-step pipeline
+    // (architecture 6) can run: it needs both the asset system and FoodTagRegistry.ResolveStaticTags'
+    // per-collectible walk. api.World.Calendar is null here (landmine B) -- the pipeline never
+    // touches it, only tags/diets/ModConfig, so this phase is safe for it.
     public override void AssetsFinalize(ICoreAPI api)
     {
         base.AssetsFinalize(api);
-        FoodTagRegistry.ResolveStaticTags(api);
-        DietRuleRegistry.CompileAll(api);
-    }
-
-    // TEMP, prompt-5 verification only -- remove before this lands. Called from GameReady, not
-    // AssetsFinalize -- api.World.Calendar is still null there (confirmed live), so any
-    // perishable's UpdateAndGetTransitionState throws regardless of slot/inventory shape.
-    private static void DumpFoodTagsForVerification(ICoreAPI api)
-    {
-        foreach (string code in new[] { "game:resin", "game:redmeat-raw", "game:axe-flint" })
-        {
-            var loc = new AssetLocation(code);
-            CollectibleObject? collectible = (CollectibleObject?)api.World.GetItem(loc) ?? api.World.GetBlock(loc);
-            if (collectible == null)
-            {
-                api.Logger.Notification("[dietsetup] tagdump {0}: not found", code);
-                continue;
-            }
-            var slot = new DummySlot(new ItemStack(collectible));
-            ulong mask = FoodTagRegistry.GetTagMask(api.World, slot, out bool determined);
-            string tags = string.Join(", ", FoodTagRegistry.TagNames(mask));
-            api.Logger.Notification("[dietsetup] tagdump {0}: determined={1} tags={2}", code, determined, tags.Length == 0 ? "(no tags)" : tags);
-        }
+        DietLoadPipeline.RunAndLog(api);
     }
 
     public override void Dispose()
@@ -213,31 +183,9 @@ public class DietSetupModSystem : ModSystem
 
     /// <summary>Merges every domain's config/foodtags.json into the tag registry (prompt 5) --
     /// GetMany, not Get, so a compat pack can add tags for a third-party mod without touching
-    /// dietsetup's own file. dietsetup ships the vanilla tags only.</summary>
-    private static void LoadFoodTagAssets(ICoreAPI api)
-    {
-        FoodTagRegistry.Reset();
-        Dictionary<AssetLocation, FoodTagConfigFile> files = api.Assets.GetMany<FoodTagConfigFile>(api.Logger, "config/foodtags.json");
-        foreach (FoodTagConfigFile file in files.Values)
-        {
-            FoodTagRegistry.LoadFrom(file);
-        }
-    }
-
-    /// <summary>Merges every domain's config/diets/*.json into the rules engine (prompt 6) --
-    /// pathBegins "config/diets/" catches every file under that folder across every domain, one
-    /// diet definition per file. Duplicate diet id across domains throws here (spec section 11:
-    /// hard error at startup, not a log-and-skip).</summary>
-    private static void LoadDietRuleAssets(ICoreAPI api)
-    {
-        DietRuleRegistry.Reset();
-        Dictionary<AssetLocation, DietDefinitionFile> files = api.Assets.GetMany<DietDefinitionFile>(api.Logger, "config/diets/");
-        foreach ((AssetLocation loc, DietDefinitionFile file) in files)
-        {
-            DietRuleRegistry.LoadFrom(file, loc.Domain, api.Logger);
-        }
-    }
-
+    /// dietsetup's own file. dietsetup ships the vanilla tags only. Loading itself now lives in
+    /// DietLoadPipeline (called from AssetsFinalize), which needs the same asset scan for its
+    /// per-domain tag-count log line.</summary>
     public override void StartServerSide(ICoreServerAPI api)
     {
         base.StartServerSide(api);
@@ -253,12 +201,13 @@ public class DietSetupModSystem : ModSystem
         RegisterRotIntakeDebugCommand(api);
         RegisterAssignRulesDietCommand(api);
         RegisterDiagCommand(api);
+        RegisterDietReloadCommand(api);
+        RegisterDietShowCommand(api);
 
         // GameReady, not AssetsFinalize -- CharacterSystem.traits is populated by its own
         // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
         // calls. GameReady is the next phase, guaranteeing LoadGamePre has fully completed first.
         api.Event.ServerRunPhase(EnumServerRunPhase.GameReady, () => ValidateTraitKeys(api));
-        api.Event.ServerRunPhase(EnumServerRunPhase.GameReady, () => DumpFoodTagsForVerification(api));
     }
 
     /// <summary>Cross-checks every "dietsetup:&lt;tag&gt;Mult" stat key any registered trait
@@ -412,6 +361,61 @@ public class DietSetupModSystem : ModSystem
                 var caller = (IServerPlayer)args.Caller.Player;
                 return string.IsNullOrEmpty(itemCode) ? DiagPlayerState(api, caller) : DiagItem(api, caller, itemCode);
             });
+    }
+
+    /// <summary>Authoring tool, admin privilege (architecture 6): re-runs the entire 8-step load
+    /// pipeline and prints the same result table AssetsFinalize logs at startup.</summary>
+    private void RegisterDietReloadCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietreload")
+            .WithDescription("Admin: re-run the diet load pipeline (tags, diets, extends, compile, validate) and print the result table")
+            .RequiresPrivilege(Privilege.controlserver)
+            .HandleWith(args => TextCommandResult.Success(DietLoadPipeline.RunAndLog(api)));
+    }
+
+    /// <summary>Prints one compiled diet in full: capacities, both derived values per category,
+    /// fallback, and every rule in win order with its priority, mask, verdict and multipliers --
+    /// this is the primary way this task's work is verified (nothing else reads the compiled
+    /// table yet).</summary>
+    private void RegisterDietShowCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietshow")
+            .WithDescription("Print one compiled diet: capacities, derived values, fallback and rules in win order")
+            .RequiresPrivilege(Privilege.commandplayer)
+            .WithArgs(api.ChatCommands.Parsers.Word("id"))
+            .HandleWith(args =>
+            {
+                string id = (string)args[0];
+                CompiledDiet? diet = DietRuleRegistry.GetDiet(id);
+                if (diet == null) return TextCommandResult.Error($"No compiled diet for id '{id}'.");
+
+                return TextCommandResult.Success(FormatDietShow(diet));
+            });
+    }
+
+    private static string FormatDietShow(CompiledDiet diet)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"diet '{diet.Id}' (domain '{diet.SourceDomain}')");
+
+        foreach (EnumFoodCategory cat in new[] { EnumFoodCategory.Fruit, EnumFoodCategory.Vegetable, EnumFoodCategory.Grain, EnumFoodCategory.Protein, EnumFoodCategory.Dairy })
+        {
+            CompiledCategory c = diet.Categories[cat];
+            sb.AppendLine($"  {cat,-10} capacity={c.Capacity:F3} gainScale={c.NutritionGainScale:F3} healthWeight={c.HealthWeight:F3}");
+        }
+
+        sb.AppendLine($"  fallback: satietyMult={diet.FallbackSatietyMult:F2} nutritionMult={diet.FallbackNutritionMult:F2}");
+        sb.AppendLine($"  rules ({diet.Rules.Length}, win order):");
+
+        for (int i = 0; i < diet.Rules.Length; i++)
+        {
+            CompiledRule r = diet.Rules[i];
+            string requires = string.Join(",", FoodTagRegistry.TagNames(r.RequiresMask));
+            string excludes = string.Join(",", FoodTagRegistry.TagNames(r.ExcludesMask));
+            sb.AppendLine($"    [{i}] priority={r.Priority} requires=[{requires}] excludes=[{excludes}] verdict={r.Verdict} satietyMult={r.SatietyMult:F2} nutritionMult={r.NutritionMult:F2}");
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     private TextCommandResult DiagPlayerState(ICoreServerAPI api, IServerPlayer caller)
@@ -568,46 +572,41 @@ public class DietSetupModSystem : ModSystem
     }
 
     /// <summary>Diagnostic (prompt 6): resolves the item in the caller's active hotbar slot
-    /// against their currently assigned diet (dietsetup:profile, same attribute the old
-    /// profile system uses -- prompt 6 has no assignment UI of its own yet) through the rules
-    /// engine, printing verdict, satiety, nutrition and every rule that matched. Optional dietId
-    /// overrides the assigned diet -- there's no assignment UI yet for rules-engine diet ids
-    /// (e.g. "goblin"), so without this override the command would be untestable.</summary>
+    /// against a given diet id, printing the resolved multipliers and matched rule. Gathers
+    /// (reads the held item's tag mask/spoil level) and resolves (the pure DietResolver core) but
+    /// applies nothing -- there is no game path wired to a diet id yet (phase 3), so this only
+    /// reports what the multipliers would be.</summary>
     private void RegisterDietResolveCommand(ICoreClientAPI api)
     {
         api.ChatCommands.Create("dietresolve")
-            .WithDescription("Diagnostic: resolve the item in your active hotbar slot through the rules engine, against your assigned diet or an optional override id")
-            .WithArgs(api.ChatCommands.Parsers.OptionalWord("dietId"))
+            .WithDescription("Diagnostic: resolve the item in your active hotbar slot against a diet id (multipliers only, nothing applied)")
+            .WithArgs(api.ChatCommands.Parsers.Word("dietId"))
             .HandleWith(args =>
             {
-                var playerEntity = api.World.Player?.Entity;
-                ItemSlot? slot = playerEntity?.RightHandItemSlot;
+                ItemSlot? slot = api.World.Player?.Entity?.RightHandItemSlot;
                 if (slot?.Itemstack == null)
                 {
                     return TextCommandResult.Success("Not holding an item.");
                 }
 
-                string dietId = args[0] as string ?? Config.DefaultProfileId;
+                string dietId = (string)args[0];
                 CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
                 if (diet == null)
                 {
-                    return TextCommandResult.Success($"No rules-engine diet registered for id '{dietId}' yet -- the goblin/elf/orc port is a later migration step.");
+                    return TextCommandResult.Success($"No compiled diet for id '{dietId}'.");
                 }
 
-                var matchedRuleIndices = new List<int>();
-                DietResolveResult result = DietResolver.Resolve(api, api.World, slot, diet, playerEntity, 1f, matchedRuleIndices);
-                if (!result.Determined)
+                ulong tagMask = FoodTagRegistry.GetTagMask(api.World, slot, out float spoilLevel, out bool determined);
+                if (!determined)
                 {
                     return TextCommandResult.Success($"{slot.Itemstack.Collectible.Code}: transition state unavailable, try again.");
                 }
 
-                string ruleLabels = matchedRuleIndices.Count == 0
-                    ? "(none, default applied)"
-                    : string.Join(", ", matchedRuleIndices.Select(i => diet.Rules[i].DebugLabel));
-                string degradedNote = diet.Degraded ? " [DEGRADED: rule references a missing custom effect key, default behaviour applied]" : "";
+                DietResolveResult result = DietResolver.Resolve(diet, tagMask, spoilLevel);
+                string tags = string.Join(", ", FoodTagRegistry.TagNames(tagMask));
 
                 return TextCommandResult.Success(
-                    $"{slot.Itemstack.Collectible.Code} vs diet '{dietId}'{degradedNote}: verdict={result.Verdict} satiety={result.Satiety:F2} nutrition={result.Nutrition:F2} matched=[{ruleLabels}]");
+                    $"{slot.Itemstack.Collectible.Code} tags=[{tags}] vs diet '{dietId}': verdict={result.Verdict} satietyMult={result.Satiety:F2} nutritionMult={result.Nutrition:F2} effects={result.Effects.Length}");
             });
     }
 
