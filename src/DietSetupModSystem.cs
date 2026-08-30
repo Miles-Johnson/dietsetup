@@ -715,7 +715,7 @@ public class DietSetupModSystem : ModSystem
 
         string patchSummary = string.Join(", ", new[]
         {
-            $"OnEntityReceiveSaturation(prefix)={PatchCount(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.OnEntityReceiveSaturation), prefix: true)}",
+            SaturationPatchDiagnostic(api),
             $"UpdateNutrientHealthBoost(prefix)={PatchCount(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.UpdateNutrientHealthBoost), prefix: true)}",
             $"CollectibleObject.GetNutritionProperties(postfix)={PatchCount(typeof(CollectibleObject), nameof(CollectibleObject.GetNutritionProperties), prefix: false)}",
             $"BlockLiquidContainerBase.GetNutritionProperties(postfix)={PatchCount(typeof(BlockLiquidContainerBase), nameof(BlockLiquidContainerBase.GetNutritionProperties), prefix: false)}"
@@ -764,6 +764,20 @@ public class DietSetupModSystem : ModSystem
         if (method == null) return 0;
         Patches? info = Harmony.GetPatchInfo(method);
         return (prefix ? info?.Prefixes?.Count : info?.Postfixes?.Count) ?? 0;
+    }
+
+    /// <summary>Owner-attributed prefix breakdown for OnEntityReceiveSaturation, plus the
+    /// side this ran on and the live harmonyPatched value -- a bare count can't tell "dietsetup
+    /// patched twice" apart from "one patch per side under two assembly load contexts"; this can.</summary>
+    private static string SaturationPatchDiagnostic(ICoreAPI api)
+    {
+        MethodInfo? method = typeof(EntityBehaviorHunger).GetMethod(nameof(EntityBehaviorHunger.OnEntityReceiveSaturation));
+        IList<Patch>? prefixes = method == null ? null : Harmony.GetPatchInfo(method)?.Prefixes;
+        string byOwner = prefixes == null || prefixes.Count == 0
+            ? "0"
+            : string.Join("+", prefixes.GroupBy(p => p.owner).Select(g => $"{g.Key}:{g.Count()}"));
+
+        return $"OnEntityReceiveSaturation(prefix)={byOwner} (side={api.Side}, harmonyPatched={harmonyPatched})";
     }
 
     private void OnDietTriggerReceived(DietTriggerPacket packet)
