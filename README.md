@@ -1,5 +1,9 @@
 # Diet Setup
 
+> This README describes the currently shipped profile system. A rewrite is planned that
+> replaces it with a single tag-based rules engine — see `notes/dietsetup-architecture.md`
+> in the workspace repo for the target design. Not yet implemented.
+
 A Vintage Story mod that lets each character pick a diet profile — Balanced, Carnivore,
 Herbivore, or a custom one you author — that scales how much satiety/nutrition they gain from
 each vanilla food category (Fruit, Vegetable, Protein, Grain, Dairy). Profiles biologically
