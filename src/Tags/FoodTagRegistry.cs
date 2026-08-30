@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Vintagestory.API.Common;
-using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Util;
 
 namespace dietsetup.Tags;
@@ -147,20 +146,6 @@ public static class FoodTagRegistry
             sourceAxisMask |= 1UL << bit;
         }
         return bit;
-    }
-
-    /// <summary>The dietsetup:&lt;tag&gt;Mult stat contract is deleted (architecture doc section 11)
-    /// -- no-op, not a stat-key lookup. Kept as a call site for DietResolver, which stays untouched
-    /// pending phase 3's capacity-based fold.</summary>
-    public static void ApplySatietyTagMultiplier(ulong tagMask, Entity? forEntity, ref float satiety)
-    {
-    }
-
-    /// <summary>Same no-op as <see cref="ApplySatietyTagMultiplier"/>, for the nutrition-gain axis
-    /// -- always neutral until phase 3.</summary>
-    public static float TagNutritionMultiplier(ulong tagMask, Entity? forEntity)
-    {
-        return 1f;
     }
 
     /// <summary>Walks every collectible once, matching each registered static tag's wildcard

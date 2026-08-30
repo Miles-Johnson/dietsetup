@@ -5,8 +5,9 @@ using Vintagestory.GameContent;
 namespace dietsetup;
 
 /// <summary>
-/// No-op until phase 3. Rewritten body derives the health weight from architecture.md section 2's
-/// per-category `capacity` field instead of the deleted CategoryDefault.NutritionMult.
+/// No-op until phase 4 (task rule 8: no capacity applied to gain or health this task). Rewritten
+/// body derives the health weight from architecture.md section 2's per-category `capacity` field
+/// instead of the deleted CategoryDefault.NutritionMult.
 /// </summary>
 [HarmonyPatch(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.UpdateNutrientHealthBoost))]
 public static class DietNutrientHealthBoostPatch

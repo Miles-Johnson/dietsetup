@@ -12,9 +12,10 @@ namespace dietsetup;
 /// Replaces vanilla's result rather than stacking on it -- a patch further downstream that also
 /// scaled by spoilage would double-apply it (notes/dietsetup-tag-engine.md section 6); this is
 /// the only patch on this method (both dietsetup and rfmechanics grepped clean).
-/// Generalizes the former goblin-only GoblinInverseFreshnessSatietyPatch: any entity with a
-/// compiled rules-engine diet gets that diet's curve for the stack's tags, everyone else (no diet
-/// assigned, or a diet id the rules engine hasn't compiled) gets vanilla unchanged.
+/// Generalizes the former goblin-only GoblinInverseFreshnessSatietyPatch: an entity whose diet has
+/// an authored rule matching the stack's tags (including spoiled/fresh) gets that rule's curve;
+/// everyone else -- no diet assigned, an uncompiled diet id, or (the common case) "base"/any diet
+/// falling through to its neutral fallback -- gets vanilla unchanged (DietResolveResult.Matched).
 /// No re-entrancy guard needed: DietSpoilageResolution/DietResolver read no shared mutable state,
 /// so this postfix firing once per ingredient from DietMealContentNutritionPatch's loop is just
 /// repeated independent calls, never a nested/recursive one.

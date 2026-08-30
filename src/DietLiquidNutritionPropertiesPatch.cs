@@ -9,7 +9,7 @@ namespace dietsetup;
 /// Same resolver, second target: BlockLiquidContainerBase.GetNutritionProperties reads
 /// NutritionPropsPerLitre directly for filled containers, only falling through to the
 /// already-patched CollectibleObject path when empty -- filled drinks need their own postfix.
-/// No-op until phase 3, see DietNutritionPropertiesPatch.
+/// See DietNutritionPropertiesPatch/DietSatietyFold.
 /// </summary>
 [HarmonyPatch(typeof(BlockLiquidContainerBase), nameof(BlockLiquidContainerBase.GetNutritionProperties))]
 public static class DietLiquidNutritionPropertiesPatch
@@ -17,5 +17,6 @@ public static class DietLiquidNutritionPropertiesPatch
     [HarmonyPostfix]
     public static void Postfix(BlockLiquidContainerBase __instance, IWorldAccessor world, ItemStack itemstack, Entity forEntity, ref FoodNutritionProperties? __result)
     {
+        DietSatietyFold.TryFold(__instance, forEntity, ref __result, out _);
     }
 }

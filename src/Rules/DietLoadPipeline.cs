@@ -2,12 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using dietsetup.Binding;
 using dietsetup.Tags;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 
 namespace dietsetup.Rules;
+
+/// <summary>One pipeline run's result: the human-readable log (what /dietreload prints) plus the
+/// parsed bindings table, which the caller stores per-side and syncs to clients (task 1).</summary>
+public readonly struct DietLoadResult
+{
+    public readonly string Log;
+    public readonly BindingsFile Bindings;
+
+    public DietLoadResult(string log, BindingsFile bindings)
+    {
+        Log = log;
+        Bindings = bindings;
+    }
+}
 
 /// <summary>Runs the full 8-step load pipeline (architecture 6) end to end. Called once from
 /// AssetsFinalize on each side, and again by /dietreload -- the whole point of this being one
@@ -17,7 +32,7 @@ public static class DietLoadPipeline
     private const string ModConfigDietsDir = "dietsetup/diets";
     private const string ModConfigBindingsFile = "dietsetup/bindings.json";
 
-    public static string RunAndLog(ICoreAPI api)
+    public static DietLoadResult RunAndLog(ICoreAPI api)
     {
         var log = new List<string>();
 
@@ -81,12 +96,12 @@ public static class DietLoadPipeline
             log.Add($"[dietsetup]   REFUSED {id}: rule {reason.Rule}, {reason.Text}");
         }
 
-        LoadAndLogBindings(api, log, compiledTable);
+        BindingsFile bindings = LoadAndLogBindings(api, log, compiledTable);
 
         log.Add($"[dietsetup] untagged nutritious collectibles: {FoodTagRegistry.UntaggedNutritiousCount}");
 
         foreach (string line in log) api.Logger.Notification(line);
-        return string.Join("\n", log);
+        return new DietLoadResult(string.Join("\n", log), bindings);
     }
 
     private static void LoadTags(ICoreAPI api, List<string> log)
@@ -207,8 +222,11 @@ public static class DietLoadPipeline
              + $"  rules {diet.Rules.Length}";
     }
 
-    // Bindings resolve nothing this task (phase 3) -- parsed, validated and logged only.
-    private static void LoadAndLogBindings(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable)
+    // Parsed, validated and logged here; DietIdResolver (task 2) is the only consumer that
+    // resolves against it. Returns the parsed table so the caller can store it per-side and
+    // sync it to clients (task 1) -- this file is ModConfig, not an asset, so a client never
+    // reads it off disk itself.
+    private static BindingsFile LoadAndLogBindings(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable)
     {
         string path = Path.Combine(GamePaths.ModConfig, ModConfigBindingsFile);
         BindingsFile bindings;
@@ -250,5 +268,6 @@ public static class DietLoadPipeline
         }
 
         log.Add($"[dietsetup] bindings: {bindings.Bindings.Count} mapped, default '{defaultId}'");
+        return bindings;
     }
 }

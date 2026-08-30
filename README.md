@@ -88,13 +88,19 @@ restructuring it breaks any mod already reading it.
   this mod's own meal-reaction aggregation. Two consequences: it will drift silently on a future
   Vintage Story update to that method, and any other mod prefixing the same overload races this
   one for which prefix's result actually takes effect.
-- **Pies and liquid containers still bypass the per-ingredient meal path.** `BlockPie` and
-  `BlockLiquidContainerBase` call `FoodSpoilageSatLossMul`/`HealthLossMul` directly with their
-  own outer stack (the whole pie, the liquid content) rather than routing through
-  `BlockMeal.GetContentNutritionProperties` — so a pie resolves as one whole `meal`-tagged item
-  through the entity's diet curve, not per filling ingredient. Decided out of scope for the
-  current spoilage-curve patch; closing this means neutralizing `BlockPie.GetNutritionHealthMul`'s
-  own direct call (see `notes/dietsetup-tag-engine-handover.md`, amended prompt 7 target 4).
+- **Pies still bypass the per-ingredient meal path — now a release blocker, not just a gap.**
+  `BlockPie.GetNutritionHealthMul` (`BlockPie.cs:442`, confirmed against the 1.22 decompile, see
+  `notes/1.22-verification.md` Items 9/11) calls `FoodSpoilageSatLossMul`/`HealthLossMul` directly
+  with the whole pie's own outer stack, not the filling being eaten, rather than routing through
+  `BlockMeal.GetContentNutritionProperties`. (`BlockLiquidContainerBase` does *not* have this
+  problem — it passes the correct inner content stack; an earlier version of this note claimed
+  otherwise.) `FoodSpoilageSatLossMul`/`HealthLossMul` are now the *sole* satiety-axis fold site
+  (architecture §5.4, corrected 2026-08-31) — that used to make this a partial miss covered by a
+  second fold; now a pie's satiety silently takes the diet's fallback for every filling, every
+  diet, full stop. Closing this means neutralizing `BlockPie.GetNutritionHealthMul`'s own direct
+  call and routing pies through the per-ingredient path (see
+  `notes/dietsetup-tag-engine-handover.md`, amended prompt 7 targets 3/4, and architecture §5.4's
+  release-blocker note).
 - **Uninstalling is safe.** All per-player state this mod writes is stored as plain
   string/bool values on the player entity; removing the mod leaves those as inert, harmlessly
   orphaned data rather than breaking save loading.

@@ -18,17 +18,17 @@ public static class DietResolver
             if (rules[i].Matches(tagMask))
             {
                 CompiledRule winner = rules[i];
-                return Apply(winner.Verdict, winner.SatietyMult, winner.NutritionMult, winner.Effects);
+                return Apply(winner.Verdict, winner.SatietyMult, winner.NutritionMult, winner.Effects, matched: true);
             }
         }
 
-        return Apply(DietVerdict.Edible, diet.FallbackSatietyMult, diet.FallbackNutritionMult, Array.Empty<CompiledEffect>());
+        return Apply(DietVerdict.Edible, diet.FallbackSatietyMult, diet.FallbackNutritionMult, Array.Empty<CompiledEffect>(), matched: false);
     }
 
     // Architecture 5.2 steps 4-5: apply the winner's multipliers to the neutral (1.0) baseline,
     // then clamp both at 0. The only two multiply sites in the mod -- see the standing rule at
     // architecture 5.4 that anything else touching satiety/nutrition/health is a defect.
-    private static DietResolveResult Apply(DietVerdict verdict, float satietyMult, float nutritionMult, CompiledEffect[] effects)
+    private static DietResolveResult Apply(DietVerdict verdict, float satietyMult, float nutritionMult, CompiledEffect[] effects, bool matched)
     {
         float satiety = 1f;
         satiety *= satietyMult;
@@ -36,6 +36,6 @@ public static class DietResolver
         float nutrition = 1f;
         nutrition *= nutritionMult;
 
-        return new DietResolveResult(verdict, Math.Max(0f, satiety), Math.Max(0f, nutrition), effects);
+        return new DietResolveResult(verdict, Math.Max(0f, satiety), Math.Max(0f, nutrition), effects, matched);
     }
 }

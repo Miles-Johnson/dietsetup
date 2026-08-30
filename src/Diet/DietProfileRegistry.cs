@@ -60,24 +60,4 @@ public static class DietProfileRegistry
         value = 1f;
         return false;
     }
-
-    // Hand-off from DietMealNutritionPatch (resolves one ingredient at a time) to
-    // DietMealContentNutritionPatch.
-    // Keyed by entity, one entry per ingredient stack, in call order.
-    private static readonly Dictionary<long, List<float>> MealIngredientContext = new();
-
-    public static void ClearMealIngredientContext(long entityId) => MealIngredientContext.Remove(entityId);
-
-    internal static void AddMealIngredientContext(long entityId, float notionalSatiety)
-    {
-        if (!MealIngredientContext.TryGetValue(entityId, out var list))
-        {
-            MealIngredientContext[entityId] = list = new();
-        }
-        list.Add(notionalSatiety);
-    }
-
-    public static List<float> TakeMealIngredientContext(long entityId) =>
-        MealIngredientContext.Remove(entityId, out var found) ? found : new();
-
 }

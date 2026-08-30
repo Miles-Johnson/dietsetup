@@ -1,22 +1,84 @@
+using dietsetup.Binding;
+using dietsetup.Rules;
+using dietsetup.Tags;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 
 namespace dietsetup;
 
 /// <summary>
-/// Shared entity-diet lookup for both GlobalConstants.FoodSpoilageSatLossMul and
-/// FoodSpoilageHealthLossMul postfixes -- health has no authored curve of its own (spec section 6,
-/// amended prompt 7 target 2: "no new rule field in v1, health is derived from satiety, not
-/// authored"), it mirrors this same satiety resolution and clamps separately. One evaluation path,
-/// same as DietResolver itself -- the two call sites differ only in what they do with the result.
-/// No-op until phase 3 wires a diet id source (bindings.json) in place of the deleted AttrProfile
-/// attribute -- always false, so both callers' __result is left at vanilla.
+/// Sole satiety-axis fold site (not DietSatietyFold -- see its doc comment). Architecture 5.4 named
+/// the GetNutritionProperties family as the fold point because that's where Satiety appears
+/// syntactically, not because that's where the mask is complete -- this site is the only one with a
+/// live spoil state on every path (a real ItemSlot for a standalone eat, vanilla's own DummySlot for
+/// the liquid-container/meal paths, same fidelity vanilla itself has, never guessed), so it's the
+/// only one that can see a fresh- or spoiled-keyed rule at all.
+///
+/// Known gap, not a regression from this being the sole owner but now load-bearing where it used to
+/// be a second, partial fold: BlockPie.cs:442 (GetNutritionHealthMul, 1.22) passes the outer pie
+/// stack to FoodSpoilageSatLossMul, not the filling being eaten (notes/1.22-verification.md, Items 9
+/// and 11) -- a pie's mask is whatever the pie item's own code carries (typically just the 'meal'
+/// form tag), so a rule keyed on a filling's source tag (meat, raw, etc.) can never match and pie
+/// satiety silently falls through to the diet's fallback. BlockLiquidContainerBase.cs:822 and
+/// BlockMeal.cs:508 pass the correct per-content/per-ingredient stack (BlockMeal via
+/// DietMealContentNutritionPatch's full replacement); CollectibleObject.cs:1787/1957 have no
+/// container indirection to get wrong. See mods/dietsetup/README.md's known-limitations entry.
+///
+/// Shared by both GlobalConstants.FoodSpoilageSatLossMul and FoodSpoilageHealthLossMul postfixes --
+/// health has no authored curve of its own (spec section 6, amended prompt 7 target 2: "no new rule
+/// field in v1, health is derived from satiety, not authored"), it mirrors this same resolve. Vanilla
+/// always calls SatLossMul immediately before HealthLossMul with the identical (stack, spoilState) on
+/// every path (notes/1.22-verification.md Item 1's caller table) -- cached below so the second call
+/// reads the first's result instead of resolving again, rather than two calls that happen to agree.
+///
+/// Gated on DietResolveResult.Matched: only overrides vanilla's own spoilage curve when an
+/// authored rule actually won. "base" (no rules, fallback 1.0/1.0) always falls through to the
+/// fallback branch with Matched=false, so an unconfigured player keeps vanilla's built-in
+/// freshness falloff untouched -- architecture 4.4, "vanilla numbers and nothing else." Without
+/// this gate, base's flat 1.0 fallback would silently erase vanilla's decay curve for everyone.
 /// </summary>
 internal static class DietSpoilageResolution
 {
+    // Keyed on stack reference + spoilState (the exact values vanilla passes to both calls) rather
+    // than trusted blindly -- a caller that only ever invokes one of the two (unverified elsewhere in
+    // the game source) must still resolve fresh, not read a stale result from an unrelated call.
+    private static ItemStack? cachedStack;
+    private static float cachedSpoilState;
+    private static DietResolveResult cachedResult;
+    private static bool cacheValid;
+
     public static bool TryResolveSatietyMultiplier(float spoilState, ItemStack? stack, EntityAgent? byEntity, out float satietyMult)
     {
         satietyMult = 0f;
-        return false;
+        if (!DietSetupModSystem.Config.EnableDietSystem) return false;
+        if (stack?.Collectible == null) return false;
+
+        DietResolveResult resolved;
+        if (cacheValid && ReferenceEquals(cachedStack, stack) && cachedSpoilState == spoilState)
+        {
+            resolved = cachedResult;
+        }
+        else
+        {
+            CompiledDiet? diet = DietIdResolver.ResolveDiet(byEntity);
+            if (diet == null)
+            {
+                cacheValid = false;
+                return false;
+            }
+
+            ulong tagMask = FoodTagRegistry.GetTagMaskForSpoilState(stack.Collectible, spoilState);
+            resolved = DietResolver.Resolve(diet, tagMask, spoilState);
+
+            cachedStack = stack;
+            cachedSpoilState = spoilState;
+            cachedResult = resolved;
+            cacheValid = true;
+        }
+
+        if (!resolved.Matched) return false;
+
+        satietyMult = resolved.Satiety;
+        return true;
     }
 }

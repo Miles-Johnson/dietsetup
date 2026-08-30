@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using dietsetup.Binding;
 using dietsetup.Diet;
 using dietsetup.Rules;
 using dietsetup.Tags;
@@ -42,6 +43,19 @@ public class DietSetupModSystem : ModSystem
     private ICoreClientAPI? capi;
     private Harmony? harmony;
 
+    private const string BindingsChannelName = "dietsetup-bindings";
+    private IServerNetworkChannel? serverBindingsChannel;
+
+    // Instance field, not a shared static (landmine C, task 1): client and server each get their
+    // own DietSetupModSystem instance even in singleplayer, so this is already side-isolated.
+    // Server: authoritative, loaded from ModConfig/dietsetup/bindings.json every pipeline run.
+    // Client: provisional until the join/reload packet lands, see OnBindingsPacket.
+    private BindingsFile bindings = new() { SchemaVersion = 1, Default = DietIdResolver.DefaultDietId };
+
+    /// <summary>What DietIdResolver.Resolve reads for this side (task 2). Not a shared static --
+    /// see the field comment above.</summary>
+    public BindingsFile CurrentBindings => bindings;
+
     // Static guard so PatchAll runs at most once for the process's lifetime -- singleplayer
     // instantiates a separate DietSetupModSystem per side in the same process, and an
     // unpatch-then-repatch inside Start() was observed stacking patches 2-3x, compounding the saturation math.
@@ -78,7 +92,7 @@ public class DietSetupModSystem : ModSystem
     public override void AssetsFinalize(ICoreAPI api)
     {
         base.AssetsFinalize(api);
-        DietLoadPipeline.RunAndLog(api);
+        bindings = DietLoadPipeline.RunAndLog(api).Bindings;
     }
 
     public override void Dispose()
@@ -191,6 +205,9 @@ public class DietSetupModSystem : ModSystem
         base.StartServerSide(api);
         sapi = api;
 
+        serverBindingsChannel = api.Network.RegisterChannel(BindingsChannelName)
+            .RegisterMessageType<DietBindingsPacket>();
+
         api.Event.PlayerNowPlaying += OnPlayerNowPlaying;
 
         // Closes the nutrition-multiplier queue's only leak path (DietProfileRegistry, step 9) --
@@ -244,6 +261,7 @@ public class DietSetupModSystem : ModSystem
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)
     {
         MigrateLegacyRotIntakeIfNeeded(byPlayer);
+        serverBindingsChannel?.SendPacket(DietBindingsPacket.From(bindings), byPlayer);
     }
 
     /// <summary>One-time copy of the pre-rename "dietsetup:rotIntake" pair to
@@ -370,7 +388,17 @@ public class DietSetupModSystem : ModSystem
         api.ChatCommands.Create("dietreload")
             .WithDescription("Admin: re-run the diet load pipeline (tags, diets, extends, compile, validate) and print the result table")
             .RequiresPrivilege(Privilege.controlserver)
-            .HandleWith(args => TextCommandResult.Success(DietLoadPipeline.RunAndLog(api)));
+            .HandleWith(args =>
+            {
+                DietLoadResult result = DietLoadPipeline.RunAndLog(api);
+                bindings = result.Bindings;
+
+                // Task 1: re-sync every connected client, not just the caller -- a stale client
+                // copy would let its tooltip disagree with the eat path until its next reconnect.
+                serverBindingsChannel?.BroadcastPacket(DietBindingsPacket.From(bindings));
+
+                return TextCommandResult.Success(result.Log);
+            });
     }
 
     /// <summary>Prints one compiled diet in full: capacities, both derived values per category,
@@ -541,9 +569,21 @@ public class DietSetupModSystem : ModSystem
         base.StartClientSide(api);
         capi = api;
 
+        api.Network.RegisterChannel(BindingsChannelName)
+            .RegisterMessageType<DietBindingsPacket>()
+            .SetMessageHandler<DietBindingsPacket>(OnBindingsPacket);
+
         RegisterHandbookPage(api);
         RegisterTagDiagCommand(api);
         RegisterDietResolveCommand(api);
+    }
+
+    /// <summary>Task 1: replaces this client's provisional (AssetsFinalize-time, likely empty)
+    /// bindings with the server's authoritative table -- fires on join and again after the
+    /// server admin runs /dietreload.</summary>
+    private void OnBindingsPacket(DietBindingsPacket packet)
+    {
+        bindings = packet.ToBindingsFile();
     }
 
     /// <summary>Diagnostic (prompt 5, ahead of the resolver): prints the resolved food-tag set
@@ -571,11 +611,10 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
-    /// <summary>Diagnostic (prompt 6): resolves the item in the caller's active hotbar slot
-    /// against a given diet id, printing the resolved multipliers and matched rule. Gathers
-    /// (reads the held item's tag mask/spoil level) and resolves (the pure DietResolver core) but
-    /// applies nothing -- there is no game path wired to a diet id yet (phase 3), so this only
-    /// reports what the multipliers would be.</summary>
+    /// <summary>Diagnostic: resolves the item in the caller's active hotbar slot against a given
+    /// (explicitly named, not the caller's own resolved) diet id, printing the multipliers and
+    /// match. Gathers and resolves but applies nothing -- per evaluation rule 2, this proves the
+    /// pure core, not any Harmony patch; only a tooltip or a moving stat bar does that.</summary>
     private void RegisterDietResolveCommand(ICoreClientAPI api)
     {
         api.ChatCommands.Create("dietresolve")
@@ -606,7 +645,7 @@ public class DietSetupModSystem : ModSystem
                 string tags = string.Join(", ", FoodTagRegistry.TagNames(tagMask));
 
                 return TextCommandResult.Success(
-                    $"{slot.Itemstack.Collectible.Code} tags=[{tags}] vs diet '{dietId}': verdict={result.Verdict} satietyMult={result.Satiety:F2} nutritionMult={result.Nutrition:F2} effects={result.Effects.Length}");
+                    $"{slot.Itemstack.Collectible.Code} tags=[{tags}] vs diet '{dietId}': verdict={result.Verdict} satietyMult={result.Satiety:F2} nutritionMult={result.Nutrition:F2} matched={result.Matched} effects={result.Effects.Length}");
             });
     }
 
