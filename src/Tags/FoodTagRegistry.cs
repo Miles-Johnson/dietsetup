@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Util;
@@ -146,43 +145,18 @@ public static class FoodTagRegistry
         return bit;
     }
 
-    /// <summary>Per-entity, per-tag satiety fold from namespaced entity stats.
-    /// No-op for a null entity or empty mask (the common case). Gotcha: EntityStats.Set seeds a
-    /// WeightedSum base of 1 -- author 0.3 for "+30%", not 1.3.</summary>
+    /// <summary>The dietsetup:&lt;tag&gt;Mult stat contract is deleted (architecture doc section 11)
+    /// -- no-op, not a stat-key lookup. Kept as a call site for DietResolver, which stays untouched
+    /// pending phase 3's capacity-based fold.</summary>
     public static void ApplySatietyTagMultiplier(ulong tagMask, Entity? forEntity, ref float satiety)
     {
-        if (forEntity == null || tagMask == 0) return;
-
-        float floor = DietSetupModSystem.Config.TagMultiplierFloor;
-        ulong remaining = tagMask;
-        while (remaining != 0)
-        {
-            int bit = BitOperations.TrailingZeroCount(remaining);
-            remaining &= remaining - 1;
-            string? statKey = tagStatKeysByBit[bit];
-            if (statKey == null) continue;
-        }
     }
 
-    /// <summary>Same fold as <see cref="ApplySatietyTagMultiplier"/>, for the nutrition-gain axis
-    /// (spec/step-9 design 2) -- returns the combined multiplier instead of mutating by ref, since
-    /// callers combine it with a rule-matched Nutrition value before enqueueing (DietSetupConfig's
-    /// nutrition-multiplier queue), not apply it in place.</summary>
+    /// <summary>Same no-op as <see cref="ApplySatietyTagMultiplier"/>, for the nutrition-gain axis
+    /// -- always neutral until phase 3.</summary>
     public static float TagNutritionMultiplier(ulong tagMask, Entity? forEntity)
     {
-        if (forEntity == null || tagMask == 0) return 1f;
-
-        float floor = DietSetupModSystem.Config.TagMultiplierFloor;
-        float mult = 1f;
-        ulong remaining = tagMask;
-        while (remaining != 0)
-        {
-            int bit = BitOperations.TrailingZeroCount(remaining);
-            remaining &= remaining - 1;
-            string? statKey = tagStatKeysByBit[bit];
-            if (statKey == null) continue;
-        }
-        return mult;
+        return 1f;
     }
 
     /// <summary>Walks every collectible once, matching each registered static tag's wildcard

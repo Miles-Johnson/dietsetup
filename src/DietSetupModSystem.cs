@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using dietsetup.Diet;
-using dietsetup.Network;
 using dietsetup.Rules;
 using dietsetup.Tags;
 using HarmonyLib;
@@ -21,8 +20,6 @@ namespace dietsetup;
 
 public class DietSetupModSystem : ModSystem
 {
-    public const string ChannelName = "dietselection";
-
     // Public API: per-tag intake accumulator (Phase G3, for rfmechanics' goblin rot aura; "rot"
     // is the only tag written in v1). Raw value + a world.Calendar.TotalHours timestamp so any
     // external reader (no assembly reference needed) can compute the live, continuously-decaying
@@ -35,11 +32,6 @@ public class DietSetupModSystem : ModSystem
     // per player in MigrateLegacyRotIntakeIfNeeded, then never read/written again.
     private const string OldAttrRotIntake = "dietsetup:rotIntake";
     private const string OldAttrRotIntakeUpdatedHours = "dietsetup:rotIntakeUpdatedHours";
-
-    // Old flat-multiplier keys from the pre-rewrite system. Left in place, unread except by
-    // DietMigration (which reads them fresh on every resolve for a "legacy_custom" player) and
-    // the one-time migration check below -- never deleted, never written to again.
-    private const string OldAttrConfigured = "dietConfigured";
 
     private const string HarmonyId = "dietsetup";
 
@@ -59,9 +51,6 @@ public class DietSetupModSystem : ModSystem
     {
         base.Start(api);
         LoadConfig(api);
-
-        api.Network.RegisterChannel(ChannelName)
-            .RegisterMessageType<DietSelectionPacket>();
 
         // Nutrition scaling is applied via Harmony patches on EntityBehaviorHunger, not by
         // re-registering the "hunger" behavior class -- RegisterEntityBehaviorClass throws on a
@@ -87,7 +76,6 @@ public class DietSetupModSystem : ModSystem
     public override void AssetsLoaded(ICoreAPI api)
     {
         base.AssetsLoaded(api);
-        LoadDietAssets(api);
         LoadFoodTagAssets(api);
         LoadDietRuleAssets(api);
     }
@@ -223,35 +211,6 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    /// <summary>Merges every domain's config/profiles.json into the registry (tag-engine
-    /// migration step 10) -- GetMany, not Get, so a race mod can ship its own profile (e.g.
-    /// raceframework's Elf) with zero dietsetup code dependency, same pattern as
-    /// LoadFoodTagAssets/LoadDietRuleAssets. A duplicate Id across domains is a hard error naming
-    /// both, mirroring DietRuleRegistry.LoadFrom's duplicate-diet-id check -- same undebuggable
-    /// last-writer-wins failure mode. Tag content is FoodTagRegistry's job now
-    /// (LoadFoodTagAssets, config/foodtags.json).</summary>
-    private static void LoadDietAssets(ICoreAPI api)
-    {
-        DietProfileRegistry.Reset();
-        Dictionary<AssetLocation, DietProfile[]> files = api.Assets.GetMany<DietProfile[]>(api.Logger, "config/profiles.json");
-        var domainById = new Dictionary<string, string>();
-        foreach ((AssetLocation loc, DietProfile[] profiles) in files)
-        {
-            foreach (DietProfile profile in profiles ?? Array.Empty<DietProfile>())
-            {
-                if (domainById.TryGetValue(profile.Id, out string? existingDomain))
-                {
-                    throw new InvalidOperationException(
-                        $"[dietsetup] Duplicate profile id '{profile.Id}' -- registered by both domain '{existingDomain}' and domain '{loc.Domain}'.");
-                }
-                domainById[profile.Id] = loc.Domain;
-                DietProfileRegistry.RegisterProfile(profile);
-            }
-        }
-
-        ValidateContent(api);
-    }
-
     /// <summary>Merges every domain's config/foodtags.json into the tag registry (prompt 5) --
     /// GetMany, not Get, so a compat pack can add tags for a third-party mod without touching
     /// dietsetup's own file. dietsetup ships the vanilla tags only.</summary>
@@ -279,42 +238,6 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    private static readonly HashSet<string> ValidCategories = new() { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" };
-
-    /// <summary>A typo'd category key (e.g. "Vegtable") fails silently otherwise -- the entry just
-    /// never matches, and that profile behaves as pass-through with no error. Runs after all
-    /// profiles/tags are registered, catching shipped content and third-party registrations.</summary>
-    private static void ValidateContent(ICoreAPI api)
-    {
-        foreach (DietProfile profile in DietProfileRegistry.AllProfiles)
-        {
-            foreach (string key in profile.CategoryDefaults.Keys)
-            {
-                if (!ValidCategories.Contains(key))
-                {
-                    api.Logger.Warning(
-                        "[dietsetup] Profile '{0}' has a CategoryDefaults entry for unrecognized category '{1}' -- likely a typo (valid: Fruit, Vegetable, Protein, Grain, Dairy). This entry will never be used.",
-                        profile.Id, key);
-                }
-            }
-        }
-    }
-
-    // ── Public API (reachable via api.ModLoader.GetModSystem<DietSetupModSystem>()) ──
-
-    /// <summary>Silent, no dialog. Rejects an unrecognized profileId (logs, does not throw --
-    /// mirrors how OnDietSelectionReceived treats a bad client-sent id).</summary>
-    public void AssignProfile(IServerPlayer player, string profileId)
-    {
-        if (DietProfileRegistry.GetProfile(profileId) == null)
-        {
-            sapi?.Logger.Warning("[dietsetup] AssignProfile called with unknown profile id '{0}' for {1}, ignored.", profileId, player.PlayerName);
-            return;
-        }
-
-        ITreeAttribute wa = player.Entity.WatchedAttributes;
-    }
-
     public override void StartServerSide(ICoreServerAPI api)
     {
         base.StartServerSide(api);
@@ -326,11 +249,7 @@ public class DietSetupModSystem : ModSystem
         // without this a departed player's dictionary entry sits forever.
         api.Event.PlayerDisconnect += OnPlayerDisconnect;
 
-        api.Network.GetChannel(ChannelName).SetMessageHandler<DietSelectionPacket>(OnDietSelectionReceived);
-
-        RegisterAdminGrantCommand(api);
         RegisterDrainSatietyCommand(api);
-        RegisterTagMultCommand(api);
         RegisterRotIntakeDebugCommand(api);
         RegisterAssignRulesDietCommand(api);
         RegisterDiagCommand(api);
@@ -371,21 +290,11 @@ public class DietSetupModSystem : ModSystem
     private static void OnPlayerDisconnect(IServerPlayer byPlayer)
     {
         DietProfileRegistry.RemoveNutritionMultiplierQueue(byPlayer.Entity.EntityId);
-        DietProfileRegistry.ClearWarnedMissingProfile(byPlayer.Entity.EntityId);
     }
 
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)
     {
-        MigrateLegacyProfileIfNeeded(byPlayer);
         MigrateLegacyRotIntakeIfNeeded(byPlayer);
-    }
-
-    /// <summary>Existing dietConfigured=true players (pre-rewrite flat-multiplier system, no
-    /// reaction concept) get pointed at the "legacy_custom" sentinel, computed from their own old
-    /// attributes on every resolve -- see DietMigration.</summary>
-    private static void MigrateLegacyProfileIfNeeded(IServerPlayer byPlayer)
-    {
-        ITreeAttribute wa = byPlayer.Entity.WatchedAttributes;
     }
 
     /// <summary>One-time copy of the pre-rename "dietsetup:rotIntake" pair to
@@ -403,40 +312,6 @@ public class DietSetupModSystem : ModSystem
             wa.SetDouble(AttrIntakeUpdatedHours("rot"), wa.GetDouble(OldAttrRotIntakeUpdatedHours, 0.0));
             wa.RemoveAttribute(OldAttrRotIntakeUpdatedHours);
         }
-    }
-
-    private void OnDietSelectionReceived(IServerPlayer fromPlayer, DietSelectionPacket packet)
-    {
-        if (DietProfileRegistry.GetProfile(packet.ProfileId) == null)
-        {
-            sapi?.Logger.Warning("[dietsetup] {0} sent unknown profile id '{1}', ignored.", fromPlayer.PlayerName, packet.ProfileId);
-            return;
-        }
-
-        sapi?.Logger.Notification("[dietsetup] {0} selected profile '{1}'", fromPlayer.PlayerName, packet.ProfileId);
-
-        ITreeAttribute wa = fromPlayer.Entity.WatchedAttributes;
-    }
-
-    /// <summary>Admin-only: grant a specific online player one-time permission to reopen the
-    /// dialog via /dietsel, mirroring vanilla's /charsel + allowcharselonce pattern.</summary>
-    private void RegisterAdminGrantCommand(ICoreServerAPI api)
-    {
-        api.ChatCommands.Create("dietselgrant")
-            .WithDescription("Grant a player one-time permission to reopen the Diet Setup dialog")
-            .RequiresPrivilege(Privilege.commandplayer)
-            .WithArgs(api.ChatCommands.Parsers.OnlinePlayer("player"))
-            .HandleWith(args =>
-            {
-                IPlayer target = (IPlayer)args[0];
-
-                if (target is IServerPlayer targetServerPlayer)
-                {
-                    targetServerPlayer.SendMessage(GlobalConstants.GeneralChatGroup, Lang.Get("dietsetup:granted-target"), EnumChatType.Notification);
-                }
-
-                return TextCommandResult.Success(Lang.Get("dietsetup:granted-admin", target.PlayerName));
-            });
     }
 
     /// <summary>Debug/testing only: zeroes the calling player's satiety while leaving per-category
@@ -458,39 +333,6 @@ public class DietSetupModSystem : ModSystem
 
                 hunger.Saturation = 0f;
                 return TextCommandResult.Success("Satiety drained to 0. Nutrition levels untouched.");
-            });
-    }
-
-    /// <summary>Debug/testing only: sets/clears a "dietsetup:&lt;tag&gt;Mult" entity stat on the
-    /// caller, to simulate a race-trait grant. EntityStats.Set seeds a WeightedSum base of 1, so
-    /// the blended result is 1 + delta -- pass 0.3 for "+30%", not 1.3. Syncs to client, so /dietdiag reflects it.</summary>
-    private void RegisterTagMultCommand(ICoreServerAPI api)
-    {
-        api.ChatCommands.Create("diettagmult")
-            .WithDescription("Debug: set/clear a dietsetup:<tag>Mult entity stat on yourself, to simulate a race-trait grant. Blended value is 1 + delta (pass 0.3 for a 1.3x effect, not 1.3).")
-            // controlserver (admin-only), not commandplayer -- this command has no legitimate
-            // non-debug purpose, unlike /dietdrainsatiety, so it gets the highest bar available
-            // rather than being reachable by ordinary moderators.
-            .RequiresPrivilege(Privilege.controlserver)
-            .WithArgs(api.ChatCommands.Parsers.Word("tag"), api.ChatCommands.Parsers.OptionalFloat("delta"))
-            .HandleWith(args =>
-            {
-                IPlayer caller = args.Caller.Player;
-                string tag = (string)args[0];
-                string statKey = "dietsetup:" + tag + "Mult";
-
-                // FloatArgParser.GetValue() doesn't null out when the optional arg is missing
-                // (unlike WordArgParser) -- it always returns the boxed default. Check IsMissing
-                // on the parser itself instead of `args[1] == null`.
-                if (args.Parsers[1].IsMissing)
-                {
-                    caller.Entity.Stats.Remove(statKey, "debug");
-                    return TextCommandResult.Success($"Cleared {statKey}. Blended value now {caller.Entity.Stats.GetBlended(statKey):F2}.");
-                }
-
-                float delta = (float)args[1];
-                caller.Entity.Stats.Set(statKey, "debug", delta, false);
-                return TextCommandResult.Success($"Set {statKey} debug delta to {delta:F2}. Blended value now {caller.Entity.Stats.GetBlended(statKey):F2} (base 1 + delta).");
             });
     }
 
@@ -575,16 +417,8 @@ public class DietSetupModSystem : ModSystem
     private TextCommandResult DiagPlayerState(ICoreServerAPI api, IServerPlayer caller)
     {
         var entity = caller.Entity;
-        var wa = entity.WatchedAttributes;
         var hunger = entity.GetBehavior<EntityBehaviorHunger>();
         var health = entity.GetBehavior<EntityBehaviorHealth>();
-
-        DietProfile profile = DietProfileRegistry.ResolveProfileForEntity(entity, Config.DefaultProfileId);
-        string catSummary = string.Join(" | ", new[] { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" }.Select(cat =>
-        {
-            DietCategoryDefault cd = profile.CategoryDefaults.TryGetValue(cat, out DietCategoryDefault? found) ? found : DietCategoryDefault.PassThrough;
-            return $"{cat}: sat={cd.SatietyMult:F2} nut={cd.NutritionMult:F2} reaction={(cd.Reaction != null ? cd.Reaction.Health.ToString("F1") : "none")}";
-        }));
 
         string hungerSummary = hunger == null
             ? "unavailable (no hunger behavior on this entity)"
@@ -597,8 +431,6 @@ public class DietSetupModSystem : ModSystem
                 ? $"nutrientHealthMod={nutrientBonus:F2}/12.50 MaxHealth={health.MaxHealth:F1}"
                 : $"nutrientHealthMod=(not set) MaxHealth={health.MaxHealth:F1}";
 #pragma warning restore CS0618
-
-        float preservedMult = entity.Stats.GetBlended("dietsetup:preservedMult");
 
         ItemSlot? heldSlot = entity.RightHandItemSlot;
         string heldSummary;
@@ -635,16 +467,10 @@ public class DietSetupModSystem : ModSystem
         });
 
         string msg = string.Format(
-            "EnableDietSystem={0} profile={1} (resolved={2}) configured={3} allowSelOnce={4}\ncategories: {5}\nhunger: {6}\n{7} | preservedMult(blended)={8:F2}\nheld: {9}\npatches: {10}",
+            "EnableDietSystem={0}\nhunger: {1}\n{2}\nheld: {3}\npatches: {4}",
             Config.EnableDietSystem,
-            wa.GetString(AttrProfile, "(unconfigured, falls back to " + Config.DefaultProfileId + ")"),
-            profile.Id,
-            wa.GetBool(AttrConfigured, false),
-            wa.GetBool(AttrAllowSelOnce, false),
-            catSummary,
             hungerSummary,
             healthSummary,
-            preservedMult,
             heldSummary,
             patchSummary);
 
@@ -675,27 +501,13 @@ public class DietSetupModSystem : ModSystem
         return TextCommandResult.Success($"{itemCode}: category={vanilla.FoodCategory} satiety={vanilla.Satiety:F1} health={vanilla.Health:F2} | satiety fold: {satietySummary}");
     }
 
-    /// <summary>The two satiety numbers /dietdiag reports for a stack: after the tag-engine fold
-    /// (already baked into afterTag.Satiety by ResolveNutritionProperties when no rules-engine diet
-    /// is assigned) and after the old-style profile's CategoryDefault.SatietyMult fold -- the same
-    /// lookup DietSaturationScalePatch.cs:56-64 performs, read here for reporting only, never
-    /// re-applied to a real value. Rules-engine diets fold satiety inside DietResolver.Resolve
-    /// instead (see /dietresolve), so the profile-fold number doesn't apply there.</summary>
-    private string DescribeSatietyFold(Entity entity, FoodNutritionProperties afterTag)
+    /// <summary>Reports the satiety value /dietdiag and /dietassignrules-adjacent commands see
+    /// after the diet patches (currently all no-ops, see /dietresolve for the rules-engine path
+    /// once a diet is wired to bindings). Not a resolve of its own -- afterTag is already the
+    /// fully patched value by the time this is called.</summary>
+    private static string DescribeSatietyFold(Entity entity, FoodNutritionProperties afterTag)
     {
-        string dietId = entity.WatchedAttributes.GetString(AttrProfile, Config.DefaultProfileId);
-        CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
-        if (diet != null)
-        {
-            return $"afterTagFold={afterTag.Satiety:F2} (rules-engine diet '{dietId}' assigned, profile fold doesn't apply -- see /dietresolve)";
-        }
-
-        DietProfile profile = DietProfileRegistry.ResolveProfileForEntity(entity, Config.DefaultProfileId);
-        string category = afterTag.FoodCategory.ToString();
-        DietCategoryDefault catDefault = profile.CategoryDefaults.TryGetValue(category, out DietCategoryDefault? cd) ? cd : DietCategoryDefault.PassThrough;
-        float afterProfile = Math.Max(0f, afterTag.Satiety * catDefault.SatietyMult);
-
-        return $"afterTagFold={afterTag.Satiety:F2} afterProfileFold={afterProfile:F2}";
+        return $"afterTagFold={afterTag.Satiety:F2}";
     }
 
     private static int PatchCount(Type type, string methodName, bool prefix)
@@ -775,7 +587,7 @@ public class DietSetupModSystem : ModSystem
                     return TextCommandResult.Success("Not holding an item.");
                 }
 
-                string dietId = args[0] as string ?? playerEntity!.WatchedAttributes.GetString(AttrProfile, Config.DefaultProfileId);
+                string dietId = args[0] as string ?? Config.DefaultProfileId;
                 CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
                 if (diet == null)
                 {
