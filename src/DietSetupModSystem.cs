@@ -12,6 +12,7 @@ using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
+using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
@@ -357,6 +358,7 @@ public class DietSetupModSystem : ModSystem
         RegisterTagMultCommand(api);
         RegisterRotIntakeDebugCommand(api);
         RegisterAssignRulesDietCommand(api);
+        RegisterDiagCommand(api);
 
         // GameReady, not AssetsFinalize -- CharacterSystem.traits is populated by its own
         // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
@@ -597,6 +599,174 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
+    /// <summary>Diagnostic: with no argument, dumps the caller's resolved profile, category
+    /// defaults, live hunger/health values, held-item tags and satiety fold, and whether the 4
+    /// Harmony patches are attached. With an item code, reports how that item resolves without
+    /// needing to eat it. Server-side, not client-side: EntityBehaviorHunger and
+    /// EntityBehaviorHealth are declared only in player.json's server: block -- reading them off a
+    /// client-side EntityPlayer always returned null, so this command never reported real
+    /// hunger/health state before the move.</summary>
+    private void RegisterDiagCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietdiag")
+            .WithDescription("Diagnostic: dump diet state for the calling player, or resolution for a given item code")
+            .WithArgs(api.ChatCommands.Parsers.OptionalWord("itemcode"))
+            .HandleWith(args =>
+            {
+                string? itemCode = args[0] as string;
+                var caller = (IServerPlayer)args.Caller.Player;
+                return string.IsNullOrEmpty(itemCode) ? DiagPlayerState(api, caller) : DiagItem(api, caller, itemCode);
+            });
+    }
+
+    private TextCommandResult DiagPlayerState(ICoreServerAPI api, IServerPlayer caller)
+    {
+        var entity = caller.Entity;
+        var wa = entity.WatchedAttributes;
+        var hunger = entity.GetBehavior<EntityBehaviorHunger>();
+        var health = entity.GetBehavior<EntityBehaviorHealth>();
+
+        DietProfile profile = DietProfileRegistry.ResolveProfileForEntity(entity, Config.DefaultProfileId);
+        string catSummary = string.Join(" | ", new[] { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" }.Select(cat =>
+        {
+            DietCategoryDefault cd = profile.CategoryDefaults.TryGetValue(cat, out DietCategoryDefault? found) ? found : DietCategoryDefault.PassThrough;
+            return $"{cat}: sat={cd.SatietyMult:F2} nut={cd.NutritionMult:F2} reaction={(cd.Reaction != null ? cd.Reaction.Health.ToString("F1") : "none")}";
+        }));
+
+        string hungerSummary = hunger == null
+            ? "unavailable (no hunger behavior on this entity)"
+            : $"Sat={hunger.Saturation:F1}/{hunger.MaxSaturation:F1} FruitLvl={hunger.FruitLevel:F1} VegLvl={hunger.VegetableLevel:F1} ProteinLvl={hunger.ProteinLevel:F1} GrainLvl={hunger.GrainLevel:F1} DairyLvl={hunger.DairyLevel:F1}";
+
+#pragma warning disable CS0618 // MaxHealthModifiers is obsolete for writing; reading it here is fine
+        string healthSummary = health == null
+            ? "unavailable (no health behavior on this entity)"
+            : health.MaxHealthModifiers != null && health.MaxHealthModifiers.TryGetValue("nutrientHealthMod", out float nutrientBonus)
+                ? $"nutrientHealthMod={nutrientBonus:F2}/12.50 MaxHealth={health.MaxHealth:F1}"
+                : $"nutrientHealthMod=(not set) MaxHealth={health.MaxHealth:F1}";
+#pragma warning restore CS0618
+
+        float preservedMult = entity.Stats.GetBlended("dietsetup:preservedMult");
+
+        ItemSlot? heldSlot = entity.RightHandItemSlot;
+        string heldSummary;
+        if (heldSlot?.Itemstack == null)
+        {
+            heldSummary = "not holding an item";
+        }
+        else
+        {
+            ItemStack heldStack = heldSlot.Itemstack;
+            ulong tagMask = FoodTagRegistry.GetTagMask(api.World, heldSlot, out bool determined);
+            string tags;
+            if (!determined)
+            {
+                tags = "transition state unavailable, try again";
+            }
+            else
+            {
+                string joined = string.Join(", ", FoodTagRegistry.TagNames(tagMask));
+                tags = joined.Length == 0 ? "(no tags)" : joined;
+            }
+
+            FoodNutritionProperties? afterTag = heldStack.Collectible.GetNutritionProperties(api.World, heldStack, entity);
+            string satietySummary = afterTag == null ? "no nutrition data" : DescribeSatietyFold(entity, afterTag);
+            heldSummary = $"{heldStack.Collectible.Code} tags=[{tags}] satiety: {satietySummary}";
+        }
+
+        string patchSummary = string.Join(", ", new[]
+        {
+            SaturationPatchDiagnostic(api),
+            $"UpdateNutrientHealthBoost(prefix)={PatchCount(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.UpdateNutrientHealthBoost), prefix: true)}",
+            $"CollectibleObject.GetNutritionProperties(postfix)={PatchCount(typeof(CollectibleObject), nameof(CollectibleObject.GetNutritionProperties), prefix: false)}",
+            $"BlockLiquidContainerBase.GetNutritionProperties(postfix)={PatchCount(typeof(BlockLiquidContainerBase), nameof(BlockLiquidContainerBase.GetNutritionProperties), prefix: false)}"
+        });
+
+        string msg = string.Format(
+            "EnableDietSystem={0} profile={1} (resolved={2}) configured={3} allowSelOnce={4}\ncategories: {5}\nhunger: {6}\n{7} | preservedMult(blended)={8:F2}\nheld: {9}\npatches: {10}",
+            Config.EnableDietSystem,
+            wa.GetString(AttrProfile, "(unconfigured, falls back to " + Config.DefaultProfileId + ")"),
+            profile.Id,
+            wa.GetBool(AttrConfigured, false),
+            wa.GetBool(AttrAllowSelOnce, false),
+            catSummary,
+            hungerSummary,
+            healthSummary,
+            preservedMult,
+            heldSummary,
+            patchSummary);
+
+        return TextCommandResult.Success(msg);
+    }
+
+    private TextCommandResult DiagItem(ICoreServerAPI api, IServerPlayer caller, string itemCode)
+    {
+        var loc = new AssetLocation(itemCode);
+        CollectibleObject? collectible = (CollectibleObject?)api.World.GetItem(loc) ?? api.World.GetBlock(loc);
+        if (collectible == null)
+        {
+            return TextCommandResult.Success($"No item or block registered with code '{itemCode}'.");
+        }
+
+        var entity = caller.Entity;
+        var stack = new ItemStack(collectible);
+        FoodNutritionProperties? vanilla = collectible.GetNutritionProperties(api.World, stack, entity);
+        // GetNutritionProperties above already runs through our own postfix (Harmony patches the
+        // real method), so `vanilla` here is already the fully resolved result -- this command
+        // just reports what it is, it doesn't re-resolve anything itself.
+        if (vanilla == null)
+        {
+            return TextCommandResult.Success($"{itemCode}: no nutrition data (not food, and no grant rule matched).");
+        }
+
+        string satietySummary = DescribeSatietyFold(entity, vanilla);
+        return TextCommandResult.Success($"{itemCode}: category={vanilla.FoodCategory} satiety={vanilla.Satiety:F1} health={vanilla.Health:F2} | satiety fold: {satietySummary}");
+    }
+
+    /// <summary>The two satiety numbers /dietdiag reports for a stack: after the tag-engine fold
+    /// (already baked into afterTag.Satiety by ResolveNutritionProperties when no rules-engine diet
+    /// is assigned) and after the old-style profile's CategoryDefault.SatietyMult fold -- the same
+    /// lookup DietSaturationScalePatch.cs:56-64 performs, read here for reporting only, never
+    /// re-applied to a real value. Rules-engine diets fold satiety inside DietResolver.Resolve
+    /// instead (see /dietresolve), so the profile-fold number doesn't apply there.</summary>
+    private string DescribeSatietyFold(Entity entity, FoodNutritionProperties afterTag)
+    {
+        string dietId = entity.WatchedAttributes.GetString(AttrProfile, Config.DefaultProfileId);
+        CompiledDiet? diet = DietRuleRegistry.GetDiet(dietId);
+        if (diet != null)
+        {
+            return $"afterTagFold={afterTag.Satiety:F2} (rules-engine diet '{dietId}' assigned, profile fold doesn't apply -- see /dietresolve)";
+        }
+
+        DietProfile profile = DietProfileRegistry.ResolveProfileForEntity(entity, Config.DefaultProfileId);
+        string category = afterTag.FoodCategory.ToString();
+        DietCategoryDefault catDefault = profile.CategoryDefaults.TryGetValue(category, out DietCategoryDefault? cd) ? cd : DietCategoryDefault.PassThrough;
+        float afterProfile = Math.Max(0f, afterTag.Satiety * catDefault.SatietyMult);
+
+        return $"afterTagFold={afterTag.Satiety:F2} afterProfileFold={afterProfile:F2}";
+    }
+
+    private static int PatchCount(Type type, string methodName, bool prefix)
+    {
+        MethodInfo? method = type.GetMethod(methodName);
+        if (method == null) return 0;
+        Patches? info = Harmony.GetPatchInfo(method);
+        return (prefix ? info?.Prefixes?.Count : info?.Postfixes?.Count) ?? 0;
+    }
+
+    /// <summary>Owner-attributed prefix breakdown for OnEntityReceiveSaturation, plus the
+    /// side this ran on and the live harmonyPatched value -- a bare count can't tell "dietsetup
+    /// patched twice" apart from "one patch per side under two assembly load contexts"; this can.</summary>
+    private static string SaturationPatchDiagnostic(ICoreAPI api)
+    {
+        MethodInfo? method = typeof(EntityBehaviorHunger).GetMethod(nameof(EntityBehaviorHunger.OnEntityReceiveSaturation));
+        IList<Patch>? prefixes = method == null ? null : Harmony.GetPatchInfo(method)?.Prefixes;
+        string byOwner = prefixes == null || prefixes.Count == 0
+            ? "0"
+            : string.Join("+", prefixes.GroupBy(p => p.owner).Select(g => $"{g.Key}:{g.Count()}"));
+
+        return $"OnEntityReceiveSaturation(prefix)={byOwner} (side={api.Side}, harmonyPatched={harmonyPatched})";
+    }
+
     public override void StartClientSide(ICoreClientAPI api)
     {
         base.StartClientSide(api);
@@ -606,7 +776,6 @@ public class DietSetupModSystem : ModSystem
 
         RegisterSelfCommand(api);
         RegisterHandbookPage(api);
-        RegisterDiagCommand(api);
         RegisterTagDiagCommand(api);
         RegisterDietResolveCommand(api);
     }
@@ -678,106 +847,6 @@ public class DietSetupModSystem : ModSystem
                 return TextCommandResult.Success(
                     $"{slot.Itemstack.Collectible.Code} vs diet '{dietId}'{degradedNote}: verdict={result.Verdict} satiety={result.Satiety:F2} nutrition={result.Nutrition:F2} matched=[{ruleLabels}]");
             });
-    }
-
-    /// <summary>Diagnostic: with no argument, dumps the caller's resolved profile, category
-    /// defaults, live hunger values, and whether the 4 Harmony patches are attached. With an item
-    /// code, reports how that item resolves without needing to eat it.</summary>
-    private void RegisterDiagCommand(ICoreClientAPI api)
-    {
-        api.ChatCommands.Create("dietdiag")
-            .WithDescription("Diagnostic: dump diet state for the calling player, or resolution for a given item code")
-            .WithArgs(api.ChatCommands.Parsers.OptionalWord("itemcode"))
-            .HandleWith(args =>
-            {
-                string? itemCode = args[0] as string;
-                return string.IsNullOrEmpty(itemCode) ? DiagPlayerState(api) : DiagItem(api, itemCode);
-            });
-    }
-
-    private TextCommandResult DiagPlayerState(ICoreClientAPI api)
-    {
-        var entity = api.World.Player.Entity;
-        var wa = entity.WatchedAttributes;
-        var hunger = entity.GetBehavior<EntityBehaviorHunger>();
-        var health = entity.GetBehavior<EntityBehaviorHealth>();
-
-        DietProfile profile = DietProfileRegistry.ResolveProfileForEntity(entity, Config.DefaultProfileId);
-        string catSummary = string.Join(" | ", new[] { "Fruit", "Vegetable", "Protein", "Grain", "Dairy" }.Select(cat =>
-        {
-            DietCategoryDefault cd = profile.CategoryDefaults.TryGetValue(cat, out DietCategoryDefault? found) ? found : DietCategoryDefault.PassThrough;
-            return $"{cat}: sat={cd.SatietyMult:F2} nut={cd.NutritionMult:F2} reaction={(cd.Reaction != null ? cd.Reaction.Health.ToString("F1") : "none")}";
-        }));
-
-#pragma warning disable CS0618 // MaxHealthModifiers is obsolete for writing; reading it here is fine
-        float nutrientBonus = health?.MaxHealthModifiers != null && health.MaxHealthModifiers.TryGetValue("nutrientHealthMod", out float b) ? b : -1f;
-#pragma warning restore CS0618
-
-        string patchSummary = string.Join(", ", new[]
-        {
-            SaturationPatchDiagnostic(api),
-            $"UpdateNutrientHealthBoost(prefix)={PatchCount(typeof(EntityBehaviorHunger), nameof(EntityBehaviorHunger.UpdateNutrientHealthBoost), prefix: true)}",
-            $"CollectibleObject.GetNutritionProperties(postfix)={PatchCount(typeof(CollectibleObject), nameof(CollectibleObject.GetNutritionProperties), prefix: false)}",
-            $"BlockLiquidContainerBase.GetNutritionProperties(postfix)={PatchCount(typeof(BlockLiquidContainerBase), nameof(BlockLiquidContainerBase.GetNutritionProperties), prefix: false)}"
-        });
-
-        string msg = string.Format(
-            "EnableDietSystem={0} profile={1} configured={2} allowSelOnce={3}\ncategories: {4}\nhunger: Sat={5:F1}/{6:F1} FruitLvl={7:F1} VegLvl={8:F1} ProteinLvl={9:F1} GrainLvl={10:F1} DairyLvl={11:F1} | nutrientHealthMod={12:F2}/12.50 MaxHealth={13:F1}\npatches: {14}",
-            Config.EnableDietSystem,
-            wa.GetString(AttrProfile, "(unconfigured, falls back to " + Config.DefaultProfileId + ")"),
-            wa.GetBool(AttrConfigured, false),
-            wa.GetBool(AttrAllowSelOnce, false),
-            catSummary,
-            hunger?.Saturation ?? -1f, hunger?.MaxSaturation ?? -1f,
-            hunger?.FruitLevel ?? -1f, hunger?.VegetableLevel ?? -1f, hunger?.ProteinLevel ?? -1f, hunger?.GrainLevel ?? -1f, hunger?.DairyLevel ?? -1f,
-            nutrientBonus, health?.MaxHealth ?? -1f,
-            patchSummary);
-
-        return TextCommandResult.Success(msg);
-    }
-
-    private TextCommandResult DiagItem(ICoreClientAPI api, string itemCode)
-    {
-        var loc = new AssetLocation(itemCode);
-        CollectibleObject? collectible = (CollectibleObject?)api.World.GetItem(loc) ?? api.World.GetBlock(loc);
-        if (collectible == null)
-        {
-            return TextCommandResult.Success($"No item or block registered with code '{itemCode}'.");
-        }
-
-        var entity = api.World.Player.Entity;
-        FoodNutritionProperties? vanilla = collectible.GetNutritionProperties(api.World, new ItemStack(collectible), entity);
-        // GetNutritionProperties above already runs through our own postfix (Harmony patches the
-        // real method), so `vanilla` here is already the fully resolved result -- this command
-        // just reports what it is, it doesn't re-resolve anything itself.
-        if (vanilla == null)
-        {
-            return TextCommandResult.Success($"{itemCode}: no nutrition data (not food, and no grant rule matched).");
-        }
-
-        return TextCommandResult.Success($"{itemCode}: category={vanilla.FoodCategory} satiety={vanilla.Satiety:F1} health={vanilla.Health:F2}");
-    }
-
-    private static int PatchCount(Type type, string methodName, bool prefix)
-    {
-        MethodInfo? method = type.GetMethod(methodName);
-        if (method == null) return 0;
-        Patches? info = Harmony.GetPatchInfo(method);
-        return (prefix ? info?.Prefixes?.Count : info?.Postfixes?.Count) ?? 0;
-    }
-
-    /// <summary>Owner-attributed prefix breakdown for OnEntityReceiveSaturation, plus the
-    /// side this ran on and the live harmonyPatched value -- a bare count can't tell "dietsetup
-    /// patched twice" apart from "one patch per side under two assembly load contexts"; this can.</summary>
-    private static string SaturationPatchDiagnostic(ICoreAPI api)
-    {
-        MethodInfo? method = typeof(EntityBehaviorHunger).GetMethod(nameof(EntityBehaviorHunger.OnEntityReceiveSaturation));
-        IList<Patch>? prefixes = method == null ? null : Harmony.GetPatchInfo(method)?.Prefixes;
-        string byOwner = prefixes == null || prefixes.Count == 0
-            ? "0"
-            : string.Join("+", prefixes.GroupBy(p => p.owner).Select(g => $"{g.Key}:{g.Count()}"));
-
-        return $"OnEntityReceiveSaturation(prefix)={byOwner} (side={api.Side}, harmonyPatched={harmonyPatched})";
     }
 
     private void OnDietTriggerReceived(DietTriggerPacket packet)
