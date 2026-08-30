@@ -610,6 +610,7 @@ public class DietSetupModSystem : ModSystem
     {
         api.ChatCommands.Create("dietdiag")
             .WithDescription("Diagnostic: dump diet state for the calling player, or resolution for a given item code")
+            .RequiresPrivilege(Privilege.commandplayer)
             .WithArgs(api.ChatCommands.Parsers.OptionalWord("itemcode"))
             .HandleWith(args =>
             {
