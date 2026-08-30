@@ -12,16 +12,12 @@ public class DietSetupConfig
     /// <summary>Master toggle. If false, every diet patch is a no-op (falls through to vanilla) and no dialog is ever shown.</summary>
     public bool EnableDietSystem { get; set; } = true;
 
-    /// <summary>If false, new characters are never auto-prompted; the feature becomes purely admin-grant/opt-in via /dietselgrant + /dietsel.</summary>
-    public bool AutoPromptNewCharacters { get; set; } = true;
-
     /// <summary>Profile id assigned to a player before they've ever picked one (and used by "Use Defaults" in the dialog). Must match a registered DietProfile.Id.</summary>
     public string DefaultProfileId { get; set; } = "balanced";
 
-    /// <summary>Floor applied to each blended "dietsetup:&lt;tag&gt;Mult" entity stat before it
-    /// multiplies into GetTagMultiplier's result. Without it, stacked negative trait deltas on a
-    /// single tag can blend below 0 (WeightedSum base 1 + deltas), and a negative multiplier
-    /// would remove food instead of granting none.</summary>
+    /// <summary>Floor applied to each blended "dietsetup:&lt;tag&gt;Mult" entity stat. Without it,
+    /// stacked negative trait deltas on a single tag can blend below 0 (WeightedSum base 1 +
+    /// deltas), and a negative multiplier would remove food instead of granting none.</summary>
     public float TagMultiplierFloor { get; set; } = 0f;
 
     // ── Rot intake (Phase G3, for rfmechanics' goblin rot aura) ──

@@ -21,8 +21,6 @@ ignored). No dependencies beyond vanilla Vintage Story 1.21.0+.
 
 Config lives at `ModConfig/dietsetup.json` after first run:
 - `EnableDietSystem` (default `true`) — master on/off switch.
-- `AutoPromptNewCharacters` (default `true`) — auto-opens the profile picker for brand-new
-  characters.
 - `DefaultProfileId` (default `"balanced"`) — profile used for players who never picked one.
 
 ## Chat commands
@@ -120,7 +118,7 @@ Features
 Choose a diet profile at character creation; reopen the picker anytime with /dietsel.
 Four built-in profiles — Balanced, Carnivore, Herbivore, and Elf — each with distinct per-category satiety/nutrition multipliers.
 Eating outside your profile isn't just weaker: Carnivore and Herbivore trigger a damage reaction on incompatible categories.
-Custom profiles and food tags are fully data-driven (profiles.json, tags.json) so pack authors can add their own.
+Custom profiles and food tags are fully data-driven (profiles.json) so pack authors can add their own.
 Race-mod integration hook: any mod can grant a per-tag nutrition multiplier to an entity with a single stat call and zero code dependency on Diet Setup — multipliers stack multiplicatively with the active profile.
 Applies across both solid food and liquid containers.
 Config toggles for enabling the system, auto-prompting new characters, and setting a default profile.

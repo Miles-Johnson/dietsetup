@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using dietsetup.Diet;
-using dietsetup.Gui;
 using dietsetup.Network;
 using dietsetup.Rules;
 using dietsetup.Tags;
@@ -24,11 +23,6 @@ public class DietSetupModSystem : ModSystem
 {
     public const string ChannelName = "dietselection";
 
-    // Namespaced WatchedAttributes keys -- the documented, read-only-for-other-mods contract.
-    public const string AttrProfile = "dietsetup:profile";
-    public const string AttrConfigured = "dietsetup:configured";
-    public const string AttrAllowSelOnce = "dietsetup:allowselonce";
-
     // Public API: per-tag intake accumulator (Phase G3, for rfmechanics' goblin rot aura; "rot"
     // is the only tag written in v1). Raw value + a world.Calendar.TotalHours timestamp so any
     // external reader (no assembly reference needed) can compute the live, continuously-decaying
@@ -47,7 +41,6 @@ public class DietSetupModSystem : ModSystem
     // the one-time migration check below -- never deleted, never written to again.
     private const string OldAttrConfigured = "dietConfigured";
 
-    private const string PendingModDataKey = "dietsetup:pending";
     private const string HarmonyId = "dietsetup";
 
     private static DietSetupConfig? config;
@@ -55,7 +48,6 @@ public class DietSetupModSystem : ModSystem
 
     private ICoreServerAPI? sapi;
     private ICoreClientAPI? capi;
-    private GuiDialogDietSetup? dialog;
     private Harmony? harmony;
 
     // Static guard so PatchAll runs at most once for the process's lifetime -- singleplayer
@@ -69,7 +61,6 @@ public class DietSetupModSystem : ModSystem
         LoadConfig(api);
 
         api.Network.RegisterChannel(ChannelName)
-            .RegisterMessageType<DietTriggerPacket>()
             .RegisterMessageType<DietSelectionPacket>();
 
         // Nutrition scaling is applied via Harmony patches on EntityBehaviorHunger, not by
@@ -238,8 +229,7 @@ public class DietSetupModSystem : ModSystem
     /// LoadFoodTagAssets/LoadDietRuleAssets. A duplicate Id across domains is a hard error naming
     /// both, mirroring DietRuleRegistry.LoadFrom's duplicate-diet-id check -- same undebuggable
     /// last-writer-wins failure mode. Tag content is FoodTagRegistry's job now
-    /// (LoadFoodTagAssets, config/foodtags.json) -- the old config/tags.json mechanism was retired
-    /// in tag-engine migration step 9.</summary>
+    /// (LoadFoodTagAssets, config/foodtags.json).</summary>
     private static void LoadDietAssets(ICoreAPI api)
     {
         DietProfileRegistry.Reset();
@@ -323,28 +313,13 @@ public class DietSetupModSystem : ModSystem
         }
 
         ITreeAttribute wa = player.Entity.WatchedAttributes;
-        wa.SetString(AttrProfile, profileId);
-        wa.SetBool(AttrConfigured, true);
     }
-
-    /// <summary>The raw assigned profile id (may be "legacy_custom"), or null if the player has
-    /// never been configured.</summary>
-    public string? GetProfile(IServerPlayer player) => player.Entity.WatchedAttributes.GetString(AttrProfile, null!);
-
-    public void RegisterProfile(DietProfile profile) => DietProfileRegistry.RegisterProfile(profile);
 
     public override void StartServerSide(ICoreServerAPI api)
     {
         base.StartServerSide(api);
         sapi = api;
 
-        // PlayerCreate fires exactly once ever per player UID (true new-character creation) --
-        // never on relog, never on death respawn (PlayerRespawn is a separate event we don't
-        // subscribe to), and never for players who existed before this mod was installed.
-        api.Event.PlayerCreate += OnPlayerCreate;
-
-        // PlayerNowPlaying only fires once the vanilla character-creation wizard has closed
-        // (or been skipped), so this trigger can never stack with it.
         api.Event.PlayerNowPlaying += OnPlayerNowPlaying;
 
         // Closes the nutrition-multiplier queue's only leak path (DietProfileRegistry, step 9) --
@@ -393,11 +368,6 @@ public class DietSetupModSystem : ModSystem
         }
     }
 
-    private void OnPlayerCreate(IServerPlayer byPlayer)
-    {
-        byPlayer.SetModData(PendingModDataKey, true);
-    }
-
     private static void OnPlayerDisconnect(IServerPlayer byPlayer)
     {
         DietProfileRegistry.RemoveNutritionMultiplierQueue(byPlayer.Entity.EntityId);
@@ -408,24 +378,14 @@ public class DietSetupModSystem : ModSystem
     {
         MigrateLegacyProfileIfNeeded(byPlayer);
         MigrateLegacyRotIntakeIfNeeded(byPlayer);
-
-        if (!Config.EnableDietSystem || !Config.AutoPromptNewCharacters) return;
-        if (!byPlayer.GetModData(PendingModDataKey, false)) return;
-
-        byPlayer.SetModData(PendingModDataKey, false);
-        sapi!.Network.GetChannel(ChannelName).SendPacket(new DietTriggerPacket(), byPlayer);
     }
 
     /// <summary>Existing dietConfigured=true players (pre-rewrite flat-multiplier system, no
     /// reaction concept) get pointed at the "legacy_custom" sentinel, computed from their own old
-    /// attributes on every resolve -- see DietMigration. Idempotent via the AttrProfile presence check.</summary>
+    /// attributes on every resolve -- see DietMigration.</summary>
     private static void MigrateLegacyProfileIfNeeded(IServerPlayer byPlayer)
     {
         ITreeAttribute wa = byPlayer.Entity.WatchedAttributes;
-        if (wa.HasAttribute(AttrProfile) || !wa.GetBool(OldAttrConfigured, false)) return;
-
-        wa.SetString(AttrProfile, DietMigration.LegacyCustomProfileId);
-        wa.SetBool(AttrConfigured, true);
     }
 
     /// <summary>One-time copy of the pre-rename "dietsetup:rotIntake" pair to
@@ -455,13 +415,7 @@ public class DietSetupModSystem : ModSystem
 
         sapi?.Logger.Notification("[dietsetup] {0} selected profile '{1}'", fromPlayer.PlayerName, packet.ProfileId);
 
-        // Never trust the client beyond the id itself -- SetString always overwrites by key
-        // (never a "fill empty slot only" no-op), so this also correctly overwrites a prior
-        // "legacy_custom" migration assignment when a grandfathered player repicks.
         ITreeAttribute wa = fromPlayer.Entity.WatchedAttributes;
-        wa.SetString(AttrProfile, packet.ProfileId);
-        wa.SetBool(AttrConfigured, true);
-        wa.SetBool(AttrAllowSelOnce, false); // consume the reopen grant, mirrors CharacterSystem clearing "allowcharselonce"
     }
 
     /// <summary>Admin-only: grant a specific online player one-time permission to reopen the
@@ -475,7 +429,6 @@ public class DietSetupModSystem : ModSystem
             .HandleWith(args =>
             {
                 IPlayer target = (IPlayer)args[0];
-                target.Entity.WatchedAttributes.SetBool(AttrAllowSelOnce, true);
 
                 if (target is IServerPlayer targetServerPlayer)
                 {
@@ -594,7 +547,6 @@ public class DietSetupModSystem : ModSystem
                     return TextCommandResult.Error($"No rules-engine diet registered for id '{dietId}'.");
                 }
 
-                caller.Entity.WatchedAttributes.SetString(AttrProfile, dietId);
                 return TextCommandResult.Success($"dietsetup:profile set to '{dietId}' (rules-engine diet, bypasses the profile picker).");
             });
     }
@@ -773,9 +725,6 @@ public class DietSetupModSystem : ModSystem
         base.StartClientSide(api);
         capi = api;
 
-        api.Network.GetChannel(ChannelName).SetMessageHandler<DietTriggerPacket>(OnDietTriggerReceived);
-
-        RegisterSelfCommand(api);
         RegisterHandbookPage(api);
         RegisterTagDiagCommand(api);
         RegisterDietResolveCommand(api);
@@ -847,52 +796,6 @@ public class DietSetupModSystem : ModSystem
 
                 return TextCommandResult.Success(
                     $"{slot.Itemstack.Collectible.Code} vs diet '{dietId}'{degradedNote}: verdict={result.Verdict} satiety={result.Satiety:F2} nutrition={result.Nutrition:F2} matched=[{ruleLabels}]");
-            });
-    }
-
-    private void OnDietTriggerReceived(DietTriggerPacket packet)
-    {
-        // Don't open immediately: PlayerNowPlaying can fire fast enough (especially singleplayer,
-        // in-process) that our dialog opens while vanilla's character-creation wizard is still
-        // visually closing. Wait for that dialog's own OnClosed event for strict ordering.
-        GuiDialog? createCharDlg = capi!.Gui.LoadedGuis.FirstOrDefault(dlg => dlg is GuiDialogCreateCharacter && dlg.IsOpened());
-        if (createCharDlg != null)
-        {
-            createCharDlg.OnClosed += OpenDialog;
-        }
-        else
-        {
-            OpenDialog();
-        }
-    }
-
-    private void OpenDialog()
-    {
-        if (dialog != null && dialog.IsOpened()) return;
-        dialog = new GuiDialogDietSetup(capi!);
-        dialog.TryOpen();
-    }
-
-    /// <summary>Self-service reopen, gated by the already-synced allowdietselonce flag (or
-    /// Creative, matching vanilla's /charsel dev bypass). The server independently re-validates
-    /// the same flag before writing anything -- this client-side check is purely for instant local feedback.</summary>
-    private void RegisterSelfCommand(ICoreClientAPI api)
-    {
-        api.ChatCommands.Create("dietsel")
-            .WithDescription("Reopen the Diet Setup dialog (requires admin-granted permission)")
-            .HandleWith(args =>
-            {
-                var entity = api.World.Player.Entity;
-                bool allowed = entity.WatchedAttributes.GetBool(AttrAllowSelOnce, false)
-                               || api.World.Player.WorldData.CurrentGameMode == EnumGameMode.Creative;
-
-                if (!allowed)
-                {
-                    return TextCommandResult.Success(Lang.Get("dietsetup:noaccess"));
-                }
-
-                OpenDialog();
-                return TextCommandResult.Success("");
             });
     }
 

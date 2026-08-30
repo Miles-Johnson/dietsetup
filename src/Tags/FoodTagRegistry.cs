@@ -23,11 +23,6 @@ public static class FoodTagRegistry
     private static readonly Dictionary<string, FoodTagAxis> tagAxis = new();
     private static readonly Dictionary<string, List<string>> tagPatterns = new();
 
-    // "dietsetup:<tag>Mult" per registered tag, bit-indexed (not dictionary-keyed) so the hot-path
-    // fold in ApplySatietyTagMultiplier/TagNutritionMultiplier never allocates or hashes -- folds
-    // the retired DietProfileRegistry.GetTagMultiplier into this registry (tag-engine step 9).
-    private static readonly string?[] tagStatKeysByBit = new string?[MaxTags];
-
     // Keyed by (isBlock, id) -- Item.Id and Block.Id share the same low-id range (see
     // itemMasks/blockMasks note below), so a plain id would conflate an item and a block.
     private static readonly HashSet<(bool isBlock, int id)> loggedTransitionFailures = new();
@@ -74,9 +69,8 @@ public static class FoodTagRegistry
 
     public static IEnumerable<string> AllTagNames => tagBits.Keys;
 
-    /// <summary>Clears tag state before a reload pass -- mirrors DietRuleRegistry.Reset /
-    /// DietProfileRegistry.Reset. Bit indices are being redefined from scratch, so tagStatKeysByBit
-    /// and sourceAxisMask (both keyed/accumulated by bit position) must reset too, not just the two
+    /// <summary>Clears tag state before a reload pass -- mirrors DietRuleRegistry.Reset.
+    /// sourceAxisMask (accumulated by bit position) must reset too, not just the two
     /// dictionaries -- a stale sourceAxisMask bit surviving a bit-position shift would corrupt every
     /// mask computed afterward. Re-seeds fresh/spoiled at bits 0/1 immediately after, since the
     /// static constructor that normally reserves them only ever runs once per process.</summary>
@@ -85,7 +79,6 @@ public static class FoodTagRegistry
         tagBits.Clear();
         tagAxis.Clear();
         tagPatterns.Clear();
-        Array.Clear(tagStatKeysByBit, 0, tagStatKeysByBit.Length);
         sourceAxisMask = 0;
 
         EnsureBit(FreshTag, FoodTagAxis.State);
@@ -146,7 +139,6 @@ public static class FoodTagRegistry
         int bit = tagBits.Count;
         tagBits[tag] = bit;
         tagAxis[tag] = axis;
-        tagStatKeysByBit[bit] = "dietsetup:" + tag + "Mult";
         if (axis == FoodTagAxis.Source)
         {
             sourceAxisMask |= 1UL << bit;
@@ -154,8 +146,7 @@ public static class FoodTagRegistry
         return bit;
     }
 
-    /// <summary>Per-entity, per-tag satiety fold from namespaced entity stats (e.g. a race trait's
-    /// "dietsetup:preservedMult") -- replaces the retired DietProfileRegistry.GetTagMultiplier.
+    /// <summary>Per-entity, per-tag satiety fold from namespaced entity stats.
     /// No-op for a null entity or empty mask (the common case). Gotcha: EntityStats.Set seeds a
     /// WeightedSum base of 1 -- author 0.3 for "+30%", not 1.3.</summary>
     public static void ApplySatietyTagMultiplier(ulong tagMask, Entity? forEntity, ref float satiety)
@@ -170,11 +161,6 @@ public static class FoodTagRegistry
             remaining &= remaining - 1;
             string? statKey = tagStatKeysByBit[bit];
             if (statKey == null) continue;
-
-            // Floor before multiplying, not after: stacked negative trait deltas on a single tag
-            // can blend below 0, and multiplying two already-negative tags back to positive would
-            // hide that instead of correcting it.
-            satiety *= Math.Max(floor, forEntity.Stats.GetBlended(statKey));
         }
     }
 
@@ -195,8 +181,6 @@ public static class FoodTagRegistry
             remaining &= remaining - 1;
             string? statKey = tagStatKeysByBit[bit];
             if (statKey == null) continue;
-
-            mult *= Math.Max(floor, forEntity.Stats.GetBlended(statKey));
         }
         return mult;
     }
