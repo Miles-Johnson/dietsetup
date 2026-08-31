@@ -23,4 +23,8 @@ internal static class MealIngredientNutritionHandoff
 
     public static List<float> TakeAll(long entityId) =>
         pending.Remove(entityId, out List<float>? found) ? found : new List<float>();
+
+    /// <summary>Diagnostic-only peek, no mutation.</summary>
+    public static int PeekCount(long entityId) =>
+        pending.TryGetValue(entityId, out List<float>? list) ? list.Count : 0;
 }

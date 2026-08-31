@@ -60,4 +60,9 @@ public static class DietProfileRegistry
         value = 1f;
         return false;
     }
+
+    /// <summary>Diagnostic-only peek, no mutation -- lets /dietfactsqueue confirm a display-only
+    /// call (DietMealFactsContext.DisplayOnly) left this entity's real-eat queue untouched.</summary>
+    public static int PeekNutritionMultiplierQueueCount(long entityId) =>
+        PendingNutritionMultipliers.TryGetValue(entityId, out Queue<float>? queue) ? queue.Count : 0;
 }

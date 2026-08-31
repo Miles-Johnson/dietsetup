@@ -22,7 +22,10 @@ public static class DietMealNutritionPatch
         if (stack?.Collectible == null) return;
 
         DietSatietyFold.TryFold(stack.Collectible, forEntity, ref __result, out DietResolveResult? resolved);
-        if (resolved != null && forEntity != null)
+        // DisplayOnly guard: see DietMealContentNutritionPatch's identical guard for why a
+        // GetContentNutritionFacts call (facts/tooltip build) must not queue a hand-off meant for
+        // a real eat.
+        if (resolved != null && forEntity != null && !DietMealFactsContext.DisplayOnly)
         {
             MealIngredientNutritionHandoff.Add(forEntity.EntityId, resolved.Value.Nutrition);
         }

@@ -121,7 +121,11 @@ public static class DietMealContentNutritionPatch
             }
         }
 
-        if (forEntity != null)
+        // DisplayOnly (DietMealFactsContext) is set by DietMealContentNutritionFactsPatch around a
+        // GetContentNutritionFacts call -- a facts/tooltip build, never a real eat. Without this
+        // guard, forEntity being non-null there (substituted, or already real for crock/pot GUI
+        // panels) would still clear+repopulate this entity's real-eat queues on every hover/GUI open.
+        if (forEntity != null && !DietMealFactsContext.DisplayOnly)
         {
             DietProfileRegistry.ClearNutritionMultiplierQueue(forEntity.EntityId);
             foreach (float nutritionMult in MealIngredientNutritionHandoff.TakeAll(forEntity.EntityId))

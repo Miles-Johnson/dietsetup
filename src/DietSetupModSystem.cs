@@ -224,6 +224,7 @@ public class DietSetupModSystem : ModSystem
         RegisterDiagCommand(api);
         RegisterDietReloadCommand(api);
         RegisterDietShowCommand(api);
+        RegisterFactsQueueDiagCommand(api);
 
         // GameReady, not AssetsFinalize -- CharacterSystem.traits is populated by its own
         // ServerRunPhase(LoadGamePre) handler, which runs concurrently with mod StartServerSide
@@ -507,6 +508,26 @@ public class DietSetupModSystem : ModSystem
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>Diagnostic: prints the caller's pending real-eat queues (DietProfileRegistry's
+    /// nutrition-multiplier queue, MealIngredientNutritionHandoff's per-ingredient hand-off).
+    /// Both are meant to be written only by a real eat's gather step -- DietMealFactsContext.
+    /// DisplayOnly guards both against a GetContentNutritionFacts (tooltip/GUI-panel) call, so
+    /// these should read 0 across any number of hovers with no eat in progress.</summary>
+    private void RegisterFactsQueueDiagCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietfactsqueue")
+            .WithDescription("Diagnostic: print your pending real-eat nutrition-multiplier queue counts (stays 0 across hovers; only a real eat should move them)")
+            .RequiresPrivilege(Privilege.commandplayer)
+            .HandleWith(args =>
+            {
+                IPlayer caller = args.Caller.Player;
+                long entityId = caller.Entity.EntityId;
+                int profileQueueCount = DietProfileRegistry.PeekNutritionMultiplierQueueCount(entityId);
+                int handoffCount = MealIngredientNutritionHandoff.PeekCount(entityId);
+                return TextCommandResult.Success($"nutritionMultiplierQueue={profileQueueCount} mealIngredientHandoff={handoffCount}");
+            });
     }
 
     private TextCommandResult DiagPlayerState(ICoreServerAPI api, IServerPlayer caller)
