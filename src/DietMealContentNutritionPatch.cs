@@ -90,7 +90,19 @@ public static class DietMealContentNutritionPatch
                 FoodNutritionProperties? ingredientProps = BlockMeal.GetIngredientStackNutritionProperties(world, nutriStack, forEntity);
                 if (ingredientProps == null) continue;
 
-                FoodNutritionProperties props = ingredientProps.Clone();
+                // Not ingredientProps.Clone(): a filled liquid container ingredient's EatenStack has
+                // a null Code (BlockLiquidContainerBase.GetNutritionProperties only sets
+                // ResolvedItemstack), and JsonItemStack.CloneTo dereferences Code unconditionally.
+                FoodNutritionProperties props = new FoodNutritionProperties
+                {
+                    FoodCategory = ingredientProps.FoodCategory,
+                    Satiety = ingredientProps.Satiety,
+                    Health = ingredientProps.Health,
+                    Intoxication = ingredientProps.Intoxication,
+                    Psychedelic = ingredientProps.Psychedelic,
+                    SaturationLossDelay = ingredientProps.SaturationLossDelay,
+                    EatenStack = ingredientProps.EatenStack
+                };
                 float spoilState = 0f;
                 if (!timeFrozen)
                 {
