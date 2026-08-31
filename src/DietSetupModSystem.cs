@@ -443,11 +443,13 @@ public class DietSetupModSystem : ModSystem
     }
 
     /// <summary>Authoring tool, admin privilege (architecture 6): re-runs the entire 8-step load
-    /// pipeline and prints the same result table AssetsFinalize logs at startup.</summary>
+    /// pipeline. The full result table always goes to server-main.log, same as AssetsFinalize's
+    /// startup run; chat gets a one-line summary since the table has scrolled some servers'
+    /// clients off their own history.</summary>
     private void RegisterDietReloadCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietreload")
-            .WithDescription("Admin: re-run the diet load pipeline (tags, diets, extends, compile, validate) and print the result table")
+            .WithDescription("Admin: re-run the diet load pipeline (tags, diets, extends, compile, validate); full table goes to server-main.log")
             .RequiresPrivilege(Privilege.controlserver)
             .HandleWith(args =>
             {
@@ -458,7 +460,7 @@ public class DietSetupModSystem : ModSystem
                 // copy would let its tooltip disagree with the eat path until its next reconnect.
                 serverBindingsChannel?.BroadcastPacket(DietBindingsPacket.From(bindings));
 
-                return TextCommandResult.Success(result.Log);
+                return TextCommandResult.Success($"Reloaded. {result.DietCount} diets, {result.RefusedCount} refused, {result.WarningCount} warnings. Table in server-main.log.");
             });
     }
 

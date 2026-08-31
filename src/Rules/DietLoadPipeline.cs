@@ -10,17 +10,24 @@ using Vintagestory.API.Config;
 
 namespace dietsetup.Rules;
 
-/// <summary>One pipeline run's result: the human-readable log (what /dietreload prints) plus the
-/// parsed bindings table, which the caller stores per-side and syncs to clients (task 1).</summary>
+/// <summary>One pipeline run's result: the human-readable log (written to server-main.log in
+/// full) plus the counts /dietreload's chat summary needs, and the parsed bindings table, which
+/// the caller stores per-side and syncs to clients (task 1).</summary>
 public readonly struct DietLoadResult
 {
     public readonly string Log;
     public readonly BindingsFile Bindings;
+    public readonly int DietCount;
+    public readonly int RefusedCount;
+    public readonly int WarningCount;
 
-    public DietLoadResult(string log, BindingsFile bindings)
+    public DietLoadResult(string log, BindingsFile bindings, int dietCount, int refusedCount, int warningCount)
     {
         Log = log;
         Bindings = bindings;
+        DietCount = dietCount;
+        RefusedCount = refusedCount;
+        WarningCount = warningCount;
     }
 }
 
@@ -35,6 +42,7 @@ public static class DietLoadPipeline
     public static DietLoadResult RunAndLog(ICoreAPI api)
     {
         var log = new List<string>();
+        int warningCount = 0;
 
         // Step 1
         FoodTagRegistry.Reset();
@@ -72,6 +80,7 @@ public static class DietLoadPipeline
             {
                 api.Logger.Warning("[dietsetup] diet '{0}': rule {1}, {2}", id, w.Rule, w.Text);
             }
+            warningCount += warnings.Count;
 
             if (compiledDiet == null)
             {
@@ -92,17 +101,15 @@ public static class DietLoadPipeline
         {
             log.Add(FormatDietRow(diet, idColumnWidth));
         }
-        foreach ((string id, DietValidationMessage reason) in refused.OrderBy(r => r.Id, StringComparer.Ordinal))
-        {
-            log.Add($"[dietsetup]   REFUSED {id}: rule {reason.Rule}, {reason.Text}");
-        }
+        // Refused diets are already logged once via api.Logger.Error at the point of refusal
+        // above; a REFUSED row here duplicated that into the Notification-level table.
 
-        BindingsFile bindings = LoadAndLogBindings(api, log, compiledTable);
+        BindingsFile bindings = LoadAndLogBindings(api, log, compiledTable, ref warningCount);
 
         log.Add($"[dietsetup] untagged nutritious collectibles: {FoodTagRegistry.UntaggedNutritiousCount}");
 
         foreach (string line in log) api.Logger.Notification(line);
-        return new DietLoadResult(string.Join("\n", log), bindings);
+        return new DietLoadResult(string.Join("\n", log), bindings, compiledTable.Count, refused.Count, warningCount);
     }
 
     private static void LoadTags(ICoreAPI api, List<string> log)
@@ -227,7 +234,7 @@ public static class DietLoadPipeline
     // resolves against it. Returns the parsed table so the caller can store it per-side and
     // sync it to clients (task 1) -- this file is ModConfig, not an asset, so a client never
     // reads it off disk itself.
-    private static BindingsFile LoadAndLogBindings(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable)
+    private static BindingsFile LoadAndLogBindings(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable, ref int warningCount)
     {
         string path = Path.Combine(GamePaths.ModConfig, ModConfigBindingsFile);
         BindingsFile bindings;
@@ -259,6 +266,7 @@ public static class DietLoadPipeline
             if (!compiledTable.ContainsKey(dietId))
             {
                 api.Logger.Warning("[dietsetup] bindings.json: trait '{0}' maps to diet '{1}', which is not a loaded diet", trait, dietId);
+                warningCount++;
             }
         }
 
@@ -266,6 +274,7 @@ public static class DietLoadPipeline
         if (!compiledTable.ContainsKey(defaultId))
         {
             api.Logger.Warning("[dietsetup] bindings.json: default diet '{0}' is not a loaded diet", defaultId);
+            warningCount++;
         }
 
         log.Add($"[dietsetup] bindings: {bindings.Bindings.Count} mapped, default '{defaultId}'");
