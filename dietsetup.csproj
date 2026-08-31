@@ -7,6 +7,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Overridable via -p:DietSetupDeployPath=... . Defaults to the Mods junction itself, not its
+       target, so deploy follows whichever profile the junction points at without this file
+       naming it. -->
+  <PropertyGroup>
+    <DietSetupDeployPath Condition="'$(DietSetupDeployPath)' == ''">$(VINTAGE_STORY_DATA)\Mods\dietsetup</DietSetupDeployPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <Reference Include="VintagestoryAPI">
       <HintPath>$(VINTAGE_STORY)/VintagestoryAPI.dll</HintPath>
@@ -33,5 +40,17 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <!-- DLL + PDB only, nothing else; deps.json etc. stay out of the deploy folder.
+       ContinueOnError defaults to false: a failed copy fails the build, not a silent skip
+       (2026-09-01 session read a stale deployed binary three times over exactly that gap). -->
+  <Target Name="DeployMod" AfterTargets="Build">
+    <ItemGroup>
+      <DietSetupDeployFiles Include="$(TargetPath)" />
+      <DietSetupDeployFiles Include="$(TargetDir)$(TargetName).pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DietSetupDeployFiles)" DestinationFolder="$(DietSetupDeployPath)" ContinueOnError="false" />
+    <Message Importance="high" Text="Deployed dietsetup to $(DietSetupDeployPath)" />
+  </Target>
 
 </Project>
