@@ -56,4 +56,8 @@ public class DietEffectFile
     public float? Amount { get; set; }
     public string? Verdict { get; set; }
     public string? Key { get; set; }
+
+    // damage/overTime only -- ignored for mode instant, which applies Amount as one immediate hit.
+    public float? DurationSec { get; set; }
+    public int? Ticks { get; set; }
 }

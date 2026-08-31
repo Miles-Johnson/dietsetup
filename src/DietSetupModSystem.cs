@@ -66,6 +66,9 @@ public class DietSetupModSystem : ModSystem
         base.Start(api);
         LoadConfig(api);
 
+        // Always available, inert unless a rule references its key -- see the class doc.
+        DietEffects.Register("dietsetup:debuglog", new DebugLogConsequenceEffect());
+
         // Nutrition scaling is applied via Harmony patches on EntityBehaviorHunger, not by
         // re-registering the "hunger" behavior class -- RegisterEntityBehaviorClass throws on a
         // duplicate key, and VSEssentials always registers "hunger" first.
@@ -257,6 +260,7 @@ public class DietSetupModSystem : ModSystem
     private static void OnPlayerDisconnect(IServerPlayer byPlayer)
     {
         DietProfileRegistry.RemoveNutritionMultiplierQueue(byPlayer.Entity.EntityId);
+        PendingMealEffects.Remove(byPlayer.Entity.EntityId);
     }
 
     private void OnPlayerNowPlaying(IServerPlayer byPlayer)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using dietsetup.Diet;
+using dietsetup.Rules;
 using HarmonyLib;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
@@ -30,6 +31,11 @@ namespace dietsetup;
 /// that queue first, because this method fires twice per real eat (landmine G: once for a
 /// UI/interaction check, once from the actual Consume() call) and a stale first-call queue must
 /// not survive into the second.
+///
+/// Task 2/3: also peeks DietSpoilageResolution's cache (populated by the FoodSpoilageSatLossMul
+/// call above) for each ingredient's Verdict and Effects, queues them in PendingMealEffects for
+/// DietMealEffectFirePatch, and -- if any ingredient resolved Inedible -- returns __result = null
+/// instead of the built list, reusing vanilla's own null-check refusal path (see the Prefix body).
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), nameof(BlockMeal.GetContentNutritionProperties),
     new[] { typeof(IWorldAccessor), typeof(ItemSlot), typeof(ItemStack[]), typeof(EntityAgent), typeof(bool), typeof(float), typeof(float) })]
@@ -39,6 +45,8 @@ public static class DietMealContentNutritionPatch
     public static bool Prefix(IWorldAccessor world, ItemSlot inSlot, ItemStack?[]? contentStacks, EntityAgent? forEntity, bool mulWithStacksize, float nutritionMul, float healthMul, ref FoodNutritionProperties[] __result)
     {
         var list = new List<FoodNutritionProperties>();
+        var mealEffects = new List<DietResolveResult>();
+        bool anyInedible = false;
         ItemStack? bowlStack = inSlot.Itemstack;
 
         if (contentStacks != null && bowlStack != null)
@@ -91,6 +99,15 @@ public static class DietMealContentNutritionPatch
                 props.Intoxication *= quantity;
                 props.Psychedelic *= quantity;
                 list.Add(props);
+
+                // Peeks the resolve FoodSpoilageSatLossMul's own postfix (DietSpoilageSatietyPatch)
+                // just cached for this exact (contentStack, spoilState) pair -- the same fold that
+                // set satLossMul above, not a second resolve for this ingredient (task 2).
+                if (DietSpoilageResolution.TryGetLastResolved(contentStack, spoilState, out DietResolveResult ingredientResolved))
+                {
+                    mealEffects.Add(ingredientResolved);
+                    if (ingredientResolved.Verdict == DietVerdict.Inedible) anyInedible = true;
+                }
             }
         }
 
@@ -101,9 +118,19 @@ public static class DietMealContentNutritionPatch
             {
                 DietProfileRegistry.EnqueueNutritionMultiplier(forEntity.EntityId, nutritionMult);
             }
+
+            // Replaced, not merged, every call -- see PendingMealEffects' doc for why that's what
+            // makes this safe against landmine C's double invocation.
+            PendingMealEffects.Replace(forEntity.EntityId, mealEffects);
         }
 
-        __result = list.ToArray();
+        // Verdict Inedible refuses the eat (7.4): null reproduces vanilla's own "nothing to eat"
+        // signal (BlockMeal.cs:225/136/102 all null-check this method's result), so
+        // tryHeldBeginEatMeal never starts the interaction and tryFinishEatMeal never calls Consume
+        // -- no consumption, no satiety. mealEffects (and therefore this ingredient's damage effect,
+        // if any) is still queued above: architecture 4.2's own example rule pairs verdict:inedible
+        // with a damage effect, so refusing the eat must not also silently drop it.
+        __result = anyInedible ? null! : list.ToArray();
         return false;
     }
 }

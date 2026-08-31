@@ -1,3 +1,4 @@
+using System;
 using dietsetup.Binding;
 using dietsetup.Rules;
 using dietsetup.Tags;
@@ -79,6 +80,23 @@ internal static class DietSpoilageResolution
         if (!resolved.Matched) return false;
 
         satietyMult = resolved.Satiety;
+        return true;
+    }
+
+    /// <summary>Read-only peek at the cache TryResolveSatietyMultiplier just populated for
+    /// (stack, spoilState) -- used by DietMealContentNutritionPatch to pull the same resolve's
+    /// Verdict and Effects immediately after its own FoodSpoilageSatLossMul call, instead of
+    /// resolving a second time for the same ingredient. Unlike TryResolveSatietyMultiplier, not
+    /// gated on Matched -- a caller here wants the full result (including an unmatched fallback's
+    /// empty effects list), not just an override-worthy satiety multiplier.</summary>
+    public static bool TryGetLastResolved(ItemStack? stack, float spoilState, out DietResolveResult result)
+    {
+        // Not default(DietResolveResult): that zeroes Effects to null rather than calling the
+        // constructor, an NRE waiting for any caller that reads result without checking the bool.
+        result = new DietResolveResult(DietVerdict.Edible, 1f, 1f, Array.Empty<CompiledEffect>(), false);
+        if (!cacheValid || !ReferenceEquals(cachedStack, stack) || cachedSpoilState != spoilState) return false;
+
+        result = cachedResult;
         return true;
     }
 }

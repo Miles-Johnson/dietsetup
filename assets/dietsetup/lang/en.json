@@ -8,6 +8,9 @@
     "dietsetup:noaccess": "You don't have permission to change your diet. An admin needs to grant you access with /dietselgrant.",
     "dietsetup:granted-admin": "Granted {0} one-time permission to reopen the Diet Setup dialog.",
     "dietsetup:granted-target": "An admin has granted you permission to reopen your Diet Setup dialog. Use /dietsel to open it.",
+    "dietsetup:verdict-inedible": "Inedible for you",
+    "dietsetup:verdict-harmful": "Harmful for you",
+    "dietsetup:verdict-nourishing": "Especially nourishing for you",
     "dietsetup:handbook-title": "Diet & Nutrition",
     "dietsetup:handbook-body": "Vintage Story tracks nutrition across five food categories: Fruit, Vegetable, Protein, Grain and Dairy. Keeping all five topped up raises your maximum health, and eating anything keeps your overall satiety from running out (which causes starvation damage over time).\n\nThe Diet Setup mod assigns your character a diet profile. Each profile controls, per category, how much satiety and nutrition you gain -- and for some builds, a category you're fundamentally incompatible with (a Carnivore eating plants, a Herbivore eating meat) does nothing for you and makes you sick instead. Eating still always succeeds; you just get nothing out of it and take damage. Reduced-but-nonzero categories are always safe, just less filling.\n\nThis choice is made once, right after character creation. Server admins can grant a player one-time permission to redo it later with /dietselgrant <player>, after which that player can reopen the dialog with /dietsel."
 }

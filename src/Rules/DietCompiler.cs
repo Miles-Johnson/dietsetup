@@ -127,11 +127,26 @@ public static class DietCompiler
         if (!requiresOk || !excludesOk) return null;
 
         DietVerdict verdict = ParseVerdict(label, rf.Verdict, fatal);
-        CompiledEffect[] effects = CompileEffects(label, rf.Effects, fatal, warnings);
+        float satietyMult = rf.SatietyMult ?? 1f;
+        float nutritionMult = rf.NutritionMult ?? 1f;
+
+        // Architecture 7.1: satietyMult/nutritionMult/verdict are one authoring path with two
+        // spellings (the top-level field here, or an effects-list entry below) -- both must reach
+        // the same CompiledRule field DietResolver.Apply already multiplies exactly once, not a
+        // second one. Seeding rule 9's collision set with whichever top-level fields were
+        // explicitly authored means writing both spellings for the same field is caught the same
+        // way as writing it twice within the effects list.
+        var writtenFields = new HashSet<string>();
+        if (rf.SatietyMult.HasValue) writtenFields.Add("Satiety");
+        if (rf.NutritionMult.HasValue) writtenFields.Add("Nutrition");
+        if (rf.Verdict != null) writtenFields.Add("Verdict");
+
+        CompiledEffect[] effects = CompileEffects(label, rf.Effects, writtenFields, fatal, warnings,
+            ref satietyMult, ref nutritionMult, ref verdict);
 
         return new CompiledRule(
             requiresMask, excludesMask, BitOperations.PopCount(requiresMask), rf.Priority ?? 0,
-            verdict, rf.SatietyMult ?? 1f, rf.NutritionMult ?? 1f, effects, label);
+            verdict, satietyMult, nutritionMult, effects, label);
     }
 
     private static bool TryCompileMask(string ruleLabel, string[] tags, List<DietValidationMessage> fatal, out ulong mask)
@@ -161,12 +176,16 @@ public static class DietCompiler
         return DietVerdict.Edible;
     }
 
-    private static CompiledEffect[] CompileEffects(string ruleLabel, DietEffectFile[]? effectsFile, List<DietValidationMessage> fatal, List<DietValidationMessage> warnings)
+    // writtenFields arrives pre-seeded with whichever top-level rule fields (satietyMult/
+    // nutritionMult/verdict) were explicitly authored -- an effects-list entry for the same field
+    // is the same collision as two effects-list entries writing it (rule 9). satietyMult/
+    // nutritionMult/verdict/ref params are the one CompiledRule field each spelling folds into
+    // (architecture 7.1: "one code path, two authoring forms") -- never a second multiply site.
+    private static CompiledEffect[] CompileEffects(string ruleLabel, DietEffectFile[]? effectsFile, HashSet<string> writtenFields, List<DietValidationMessage> fatal, List<DietValidationMessage> warnings, ref float satietyMult, ref float nutritionMult, ref DietVerdict verdict)
     {
         if (effectsFile == null || effectsFile.Length == 0) return Array.Empty<CompiledEffect>();
 
         var list = new List<CompiledEffect>(effectsFile.Length);
-        var writtenFields = new HashSet<string>();
 
         foreach (DietEffectFile ef in effectsFile)
         {
@@ -189,7 +208,7 @@ public static class DietCompiler
                 continue;
             }
 
-            DietVerdict? verdict = null;
+            DietVerdict? effectVerdict = null;
             if (type == DietEffectType.Verdict)
             {
                 if (!Enum.TryParse(ef.Verdict ?? "", true, out DietVerdict parsedVerdict))
@@ -199,10 +218,19 @@ public static class DietCompiler
                     fatal.Add(new DietValidationMessage(0, $"rule '{ruleLabel}': verdict effect has unknown verdict '{ef.Verdict}'"));
                     continue;
                 }
+                effectVerdict = parsedVerdict;
                 verdict = parsedVerdict;
             }
+            else if (type == DietEffectType.SatietyMult)
+            {
+                satietyMult = ef.Amount ?? 1f;
+            }
+            else if (type == DietEffectType.NutritionMult)
+            {
+                nutritionMult = ef.Amount ?? 1f;
+            }
 
-            IDietCustomEffect? customEffect = null;
+            IDietConsequenceEffect? customEffect = null;
             if (type == DietEffectType.Custom)
             {
                 string key = ef.Key ?? "";
@@ -212,7 +240,30 @@ public static class DietCompiler
                 }
             }
 
-            list.Add(new CompiledEffect(type, ef.Amount ?? 0f, ef.Mode, verdict, ef.Key, customEffect));
+            DietDamageMode? damageMode = null;
+            float durationSec = 0f;
+            int ticks = 1;
+            if (type == DietEffectType.Damage)
+            {
+                if (!Enum.TryParse(ef.Mode, true, out DietDamageMode parsedMode))
+                {
+                    // Not one of the 13 numbered rules -- same reasoning as the unknown-verdict check
+                    // above: the effect type parsed fine (rule 7), its mode value didn't.
+                    fatal.Add(new DietValidationMessage(0, $"rule '{ruleLabel}': damage effect has missing or unknown mode '{ef.Mode}' (must be 'instant' or 'overTime')"));
+                    continue;
+                }
+                damageMode = parsedMode;
+                if (parsedMode == DietDamageMode.OverTime)
+                {
+                    durationSec = ef.DurationSec ?? 3f;
+                    ticks = Math.Max(1, ef.Ticks ?? 3);
+                }
+            }
+
+            // satietyMult/nutritionMult default to 1 (no-op), matching the top-level field
+            // convention -- every other type's stored Amount defaults to 0 (no-op for damage).
+            float amount = type is DietEffectType.SatietyMult or DietEffectType.NutritionMult ? ef.Amount ?? 1f : ef.Amount ?? 0f;
+            list.Add(new CompiledEffect(type, amount, ef.Mode, effectVerdict, ef.Key, customEffect, damageMode, durationSec, ticks));
         }
         return list.ToArray();
     }

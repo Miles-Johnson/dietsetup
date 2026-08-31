@@ -104,6 +104,15 @@ restructuring it breaks any mod already reading it.
 - **Uninstalling is safe.** All per-player state this mod writes is stored as plain
   string/bool values on the player entity; removing the mod leaves those as inert, harmlessly
   orphaned data rather than breaking save loading.
+- **Eat-completion thresholds are hardcoded literals mirroring vanilla, not read from it.**
+  `DietEatResolvePatch`/`RotIntakeAccrualPatch`'s `secondsUsed >= 0.95f` (standalone eat,
+  `CollectibleObject.tryEatStop`) and `DietMealEffectFirePatch`'s `secondsUsed >= 1.45f` (meal eat,
+  `BlockMeal.tryFinishEatMeal`) both reproduce a magic number vanilla itself only ever inlines
+  (`reference/decompiled/1.22/VintagestoryAPI/.../CollectibleObject.cs:1782`,
+  `reference/decompiled/1.22/VSSurvivalMod/.../BlockMeal.cs:225`) — neither exists as a named,
+  patch-readable constant. A future VS version changing either threshold silently desyncs these
+  patches' "was this a real eat" guard from vanilla's own, the same class of drift risk as the
+  `12.5f`/weighted-average constants in `DietNutrientHealthBoostPatch`.
 
 ## Reporting issues
 
