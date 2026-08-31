@@ -216,6 +216,7 @@ public class DietSetupModSystem : ModSystem
 
         RegisterDrainSatietyCommand(api);
         RegisterRotIntakeDebugCommand(api);
+        RegisterSetNutritionCommand(api);
         RegisterAssignRulesDietCommand(api);
         RegisterDiagCommand(api);
         RegisterDietReloadCommand(api);
@@ -333,6 +334,57 @@ public class DietSetupModSystem : ModSystem
                 wa.SetDouble(valueKey, value);
                 wa.SetDouble(updatedKey, caller.Entity.World.Calendar.TotalHours);
                 return TextCommandResult.Success($"Set {valueKey}={value:F4} (timestamp reset to now, cap is {Config.RotIntakeCap:F2}). Check rfmechanics' /rfrotdiag to see the resulting aura shape.");
+            });
+    }
+
+    /// <summary>Debug/testing only: writes hunger levels directly so a capacity fixture's
+    /// max-health checks are one command instead of force-feeding food. Server-only (landmine A).
+    /// Never touches MaxSaturation (landmine F, rfmechanics' business) -- absolute value only, so 0 is the drain.</summary>
+    private void RegisterSetNutritionCommand(ICoreServerAPI api)
+    {
+        api.ChatCommands.Create("dietsetnutrition")
+            .WithDescription("Debug: set a nutrition level (or 'all' for all five) directly, clamped to your live maxsaturation. Prints all five levels and the current max-health bonus.")
+            .RequiresPrivilege(Privilege.controlserver)
+            .WithArgs(
+                api.ChatCommands.Parsers.WordRange("category", "Fruit", "Vegetable", "Protein", "Grain", "Dairy", "all"),
+                api.ChatCommands.Parsers.Float("value"))
+            .HandleWith(args =>
+            {
+                IPlayer caller = args.Caller.Player;
+                EntityBehaviorHunger? hunger = caller?.Entity?.GetBehavior<EntityBehaviorHunger>();
+                if (hunger == null)
+                {
+                    return TextCommandResult.Error("No hunger behavior found on your entity.");
+                }
+
+                string category = (string)args[0];
+                float value = Math.Clamp((float)args[1], 0f, hunger.MaxSaturation);
+
+                switch (category)
+                {
+                    case "all":
+                        hunger.FruitLevel = value;
+                        hunger.VegetableLevel = value;
+                        hunger.ProteinLevel = value;
+                        hunger.GrainLevel = value;
+                        hunger.DairyLevel = value;
+                        break;
+                    case "Fruit": hunger.FruitLevel = value; break;
+                    case "Vegetable": hunger.VegetableLevel = value; break;
+                    case "Protein": hunger.ProteinLevel = value; break;
+                    case "Grain": hunger.GrainLevel = value; break;
+                    case "Dairy": hunger.DairyLevel = value; break;
+                }
+
+                // UpdateNutrientHealthBoost only otherwise runs from the eat path (OnEntityReceiveSaturation)
+                // or Initialize -- called here so entity.MaxHealth reflects this write immediately.
+                hunger.UpdateNutrientHealthBoost();
+                CompiledDiet? diet = DietIdResolver.ResolveDiet(hunger.entity);
+                float nutrientHealthMod = diet == null ? 0f : DietNutrientHealthBoostPatch.ComputeBonus(diet, hunger);
+
+                return TextCommandResult.Success(
+                    $"Fruit={hunger.FruitLevel:F2} Vegetable={hunger.VegetableLevel:F2} Protein={hunger.ProteinLevel:F2} " +
+                    $"Grain={hunger.GrainLevel:F2} Dairy={hunger.DairyLevel:F2} | nutrientHealthMod={nutrientHealthMod:F4}");
             });
     }
 
