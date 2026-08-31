@@ -500,7 +500,10 @@ public class DietSetupModSystem : ModSystem
             CompiledRule r = diet.Rules[i];
             string requires = string.Join(",", FoodTagRegistry.TagNames(r.RequiresMask));
             string excludes = string.Join(",", FoodTagRegistry.TagNames(r.ExcludesMask));
-            sb.AppendLine($"    [{i}] priority={r.Priority} requires=[{requires}] excludes=[{excludes}] verdict={r.Verdict} satietyMult={r.SatietyMult:F2} nutritionMult={r.NutritionMult:F2}");
+            // satietyMult/nutritionMult below are the authored values -- Inedible forces both to 0
+            // at Resolve() regardless (architecture 7.5), so they're not what a real eat produces.
+            string inedibleNote = r.Verdict == DietVerdict.Inedible ? " (Inedible: Resolve() forces satiety/nutrition to 0, not the values above)" : "";
+            sb.AppendLine($"    [{i}] priority={r.Priority} requires=[{requires}] excludes=[{excludes}] verdict={r.Verdict} satietyMult={r.SatietyMult:F2} nutritionMult={r.NutritionMult:F2}{inedibleNote}");
         }
 
         return sb.ToString().TrimEnd();

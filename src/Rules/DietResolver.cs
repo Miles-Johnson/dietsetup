@@ -36,6 +36,14 @@ public static class DietResolver
         float nutrition = 1f;
         nutrition *= nutritionMult;
 
+        // Architecture 7.5: Inedible contributes zero regardless of the rule's authored
+        // multipliers -- a reaction-axis verdict, not a second place to author the same number.
+        if (verdict == DietVerdict.Inedible)
+        {
+            satiety = 0f;
+            nutrition = 0f;
+        }
+
         return new DietResolveResult(verdict, Math.Max(0f, satiety), Math.Max(0f, nutrition), effects, matched);
     }
 }

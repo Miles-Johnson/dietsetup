@@ -32,10 +32,15 @@ namespace dietsetup;
 /// UI/interaction check, once from the actual Consume() call) and a stale first-call queue must
 /// not survive into the second.
 ///
-/// Task 2/3: also peeks DietSpoilageResolution's cache (populated by the FoodSpoilageSatLossMul
-/// call above) for each ingredient's Verdict and Effects, queues them in PendingMealEffects for
-/// DietMealEffectFirePatch, and -- if any ingredient resolved Inedible -- returns __result = null
-/// instead of the built list, reusing vanilla's own null-check refusal path (see the Prefix body).
+/// Also peeks DietSpoilageResolution's cache (populated by the FoodSpoilageSatLossMul call above)
+/// for each ingredient's Verdict and Effects and queues them in PendingMealEffects for
+/// DietMealEffectFirePatch. Architecture 7.5: an Inedible ingredient does not refuse the eat --
+/// its satiety/nutrition are already zeroed by DietResolver, so it reaches this loop's sum as a
+/// zero contribution like any other, and __result is always the built (possibly all-zero) list,
+/// never null. Nulling it here used to double as vanilla's own "nothing to eat" refusal signal,
+/// which also meant every null-checking choke point upstream (tryHeldBeginEatMeal,
+/// tryHeldContinueEatMeal, the tooltip's GetContentNutritionFacts -- the last one has no null
+/// guard at all) broke on an Inedible ingredient, not just the final Consume() call.
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), nameof(BlockMeal.GetContentNutritionProperties),
     new[] { typeof(IWorldAccessor), typeof(ItemSlot), typeof(ItemStack[]), typeof(EntityAgent), typeof(bool), typeof(float), typeof(float) })]
@@ -44,9 +49,10 @@ public static class DietMealContentNutritionPatch
     [HarmonyPrefix]
     public static bool Prefix(IWorldAccessor world, ItemSlot inSlot, ItemStack?[]? contentStacks, EntityAgent? forEntity, bool mulWithStacksize, float nutritionMul, float healthMul, ref FoodNutritionProperties[] __result)
     {
+        if (!DietSetupModSystem.Config.EnableDietSystem) return true;
+
         var list = new List<FoodNutritionProperties>();
         var mealEffects = new List<DietResolveResult>();
-        bool anyInedible = false;
         ItemStack? bowlStack = inSlot.Itemstack;
 
         if (contentStacks != null && bowlStack != null)
@@ -92,21 +98,25 @@ public static class DietMealContentNutritionPatch
                     spoilState = contentStack.Collectible.UpdateAndGetTransitionState(world, dummySlot, EnumTransitionType.Perish)?.TransitionLevel ?? 0f;
                 }
 
-                float satLossMul = GlobalConstants.FoodSpoilageSatLossMul(spoilState, contentStack, forEntity);
-                float healthLossMul = GlobalConstants.FoodSpoilageHealthLossMul(spoilState, contentStack, forEntity);
-                props.Satiety *= satLossMul * nutritionMul * quantity;
-                props.Health *= healthLossMul * healthMul * quantity;
+                // Not spoilage-only despite the vanilla method name: DietSpoilageSatietyPatch's
+                // postfix *replaces* (not folds) vanilla's own spoilage value with the diet's fully
+                // resolved satiety/health multiplier whenever a rule matched -- including the
+                // Inedible zero override -- so these locals carry either vanilla's spoilage curve
+                // (no rule matched) or the diet's resolve (one did), never both combined.
+                float ingredientSatietyMult = GlobalConstants.FoodSpoilageSatLossMul(spoilState, contentStack, forEntity);
+                float ingredientHealthMult = GlobalConstants.FoodSpoilageHealthLossMul(spoilState, contentStack, forEntity);
+                props.Satiety *= ingredientSatietyMult * nutritionMul * quantity;
+                props.Health *= ingredientHealthMult * healthMul * quantity;
                 props.Intoxication *= quantity;
                 props.Psychedelic *= quantity;
                 list.Add(props);
 
                 // Peeks the resolve FoodSpoilageSatLossMul's own postfix (DietSpoilageSatietyPatch)
                 // just cached for this exact (contentStack, spoilState) pair -- the same fold that
-                // set satLossMul above, not a second resolve for this ingredient (task 2).
+                // set ingredientSatietyMult above, not a second resolve for this ingredient.
                 if (DietSpoilageResolution.TryGetLastResolved(contentStack, spoilState, out DietResolveResult ingredientResolved))
                 {
                     mealEffects.Add(ingredientResolved);
-                    if (ingredientResolved.Verdict == DietVerdict.Inedible) anyInedible = true;
                 }
             }
         }
@@ -124,13 +134,10 @@ public static class DietMealContentNutritionPatch
             PendingMealEffects.Replace(forEntity.EntityId, mealEffects);
         }
 
-        // Verdict Inedible refuses the eat (7.4): null reproduces vanilla's own "nothing to eat"
-        // signal (BlockMeal.cs:225/136/102 all null-check this method's result), so
-        // tryHeldBeginEatMeal never starts the interaction and tryFinishEatMeal never calls Consume
-        // -- no consumption, no satiety. mealEffects (and therefore this ingredient's damage effect,
-        // if any) is still queued above: architecture 4.2's own example rule pairs verdict:inedible
-        // with a damage effect, so refusing the eat must not also silently drop it.
-        __result = anyInedible ? null! : list.ToArray();
+        // Never null (7.5): every caller of this method null-checks it as "nothing to eat", and one
+        // of them (GetContentNutritionFacts, the tooltip) has no null guard at all -- an Inedible
+        // ingredient is a zero contribution already folded into list above, not a refusal.
+        __result = list.ToArray();
         return false;
     }
 }

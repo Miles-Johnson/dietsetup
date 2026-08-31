@@ -23,7 +23,7 @@ internal static class DietEffectRunner
             switch (effect.Type)
             {
                 case DietEffectType.Damage:
-                    ApplyDamage(byEntity, effect);
+                    ApplyDamage(api, byEntity, effect);
                     break;
                 case DietEffectType.Custom:
                     ApplyCustom(api, byEntity, result, effect);
@@ -35,7 +35,7 @@ internal static class DietEffectRunner
     // Old profile system's Reaction/DamageOverTime split, replaced by one authored list and one
     // mode switch (architecture 7.1). Amount's sign is authoring convention (negative = damage,
     // matching the architecture 4.2 example) -- ReceiveDamage always wants a positive magnitude.
-    private static void ApplyDamage(EntityAgent byEntity, CompiledEffect effect)
+    private static void ApplyDamage(ICoreAPI api, EntityAgent byEntity, CompiledEffect effect)
     {
         float amount = Math.Abs(effect.Amount);
         if (amount <= 0f) return;
@@ -53,7 +53,12 @@ internal static class DietEffectRunner
             source.DamageOverTimeTypeEnum = EnumDamageOverTimeEffectType.Poison;
         }
 
-        byEntity.ReceiveDamage(source, amount);
+        // ReceiveDamage returns false when refused (Creative mode, immunity, etc.) -- indistinguishable
+        // from "applied" without checking it, so a refused damage effect looked like a silent no-op.
+        if (!byEntity.ReceiveDamage(source, amount))
+        {
+            api.Logger.Warning("[dietsetup] Diet damage effect refused for entity {0} (amount={1}), likely Creative mode or damage immunity.", byEntity.EntityId, amount);
+        }
     }
 
     // DietResolveResult passed by value, not ref -- see IDietConsequenceEffect's doc for why that's
