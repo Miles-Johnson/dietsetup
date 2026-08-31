@@ -87,9 +87,10 @@ public static class DietLoadPipeline
 
         // Step 8
         log.Add($"[dietsetup] diets: {compiledTable.Count} loaded, {refused.Count} refused");
+        int idColumnWidth = compiledTable.Count == 0 ? 0 : compiledTable.Values.Max(d => d.Id.Length) + 1;
         foreach (CompiledDiet diet in compiledTable.Values.OrderBy(d => d.Id, StringComparer.Ordinal))
         {
-            log.Add(FormatDietRow(diet));
+            log.Add(FormatDietRow(diet, idColumnWidth));
         }
         foreach ((string id, DietValidationMessage reason) in refused.OrderBy(r => r.Id, StringComparer.Ordinal))
         {
@@ -212,12 +213,12 @@ public static class DietLoadPipeline
         return raw;
     }
 
-    private static string FormatDietRow(CompiledDiet diet)
+    private static string FormatDietRow(CompiledDiet diet, int idColumnWidth)
     {
         string Cap(EnumFoodCategory c) => diet.Categories[c].Capacity.ToString("F2");
         string Gain(EnumFoodCategory c) => diet.Categories[c].NutritionGainScale.ToString("F2");
 
-        return $"[dietsetup]   {diet.Id,-12}cap F{Cap(EnumFoodCategory.Fruit)} V{Cap(EnumFoodCategory.Vegetable)} G{Cap(EnumFoodCategory.Grain)} P{Cap(EnumFoodCategory.Protein)} D{Cap(EnumFoodCategory.Dairy)}"
+        return $"[dietsetup]   {diet.Id.PadRight(idColumnWidth)}cap F{Cap(EnumFoodCategory.Fruit)} V{Cap(EnumFoodCategory.Vegetable)} G{Cap(EnumFoodCategory.Grain)} P{Cap(EnumFoodCategory.Protein)} D{Cap(EnumFoodCategory.Dairy)}"
              + $"  gain F{Gain(EnumFoodCategory.Fruit)} V{Gain(EnumFoodCategory.Vegetable)} G{Gain(EnumFoodCategory.Grain)} P{Gain(EnumFoodCategory.Protein)} D{Gain(EnumFoodCategory.Dairy)}"
              + $"  rules {diet.Rules.Length}";
     }

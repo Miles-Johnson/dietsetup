@@ -336,14 +336,17 @@ public class DietSetupModSystem : ModSystem
             });
     }
 
-    /// <summary>Standing admin tool, not a throwaway: sets the caller's dietsetup:profile directly
-    /// to a rules-engine diet id (e.g. "goblin"), bypassing the old profile picker. /dietsel's own
-    /// picker only offers profiles.json ids until diet ids and profile ids are unified (tag-engine
-    /// migration step 10/11) -- until then this is the only assignment path for a rules-engine diet.</summary>
+    /// <summary>Standing admin tool, not a throwaway: writes DietIdResolver.OverrideAttribute
+    /// (architecture 4.5's explicit-override tier) on the caller's own entity. This was previously
+    /// a no-op that only validated the id and returned a success message without writing anything
+    /// -- every caller still resolved through the trait/default tiers. WatchedAttributes, not
+    /// EntityStats: it's read fresh on every resolve (DietIdResolver.Resolve), so a retune reaches
+    /// the player on their next meal with nothing to migrate, and it auto-syncs to the owning
+    /// client the same way vanilla's own hunger levels do -- no separate sync code needed.</summary>
     private void RegisterAssignRulesDietCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietassignrules")
-            .WithDescription("Admin: set your own dietsetup:profile directly to a rules-engine diet id, bypassing the profile picker")
+            .WithDescription("Admin: set your own diet override to a rules-engine diet id, bypassing trait/default resolution")
             .RequiresPrivilege(Privilege.controlserver)
             .WithArgs(api.ChatCommands.Parsers.Word("dietId"))
             .HandleWith(args =>
@@ -356,7 +359,8 @@ public class DietSetupModSystem : ModSystem
                     return TextCommandResult.Error($"No rules-engine diet registered for id '{dietId}'.");
                 }
 
-                return TextCommandResult.Success($"dietsetup:profile set to '{dietId}' (rules-engine diet, bypasses the profile picker).");
+                caller.Entity.WatchedAttributes.SetString(DietIdResolver.OverrideAttribute, dietId);
+                return TextCommandResult.Success($"{DietIdResolver.OverrideAttribute} set to '{dietId}' (rules-engine diet, bypasses trait/default resolution).");
             });
     }
 
