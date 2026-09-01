@@ -53,12 +53,17 @@
     <Copy SourceFiles="@(DietSetupDeployFiles)" DestinationFolder="$(DietSetupDeployPath)" ContinueOnError="false" />
 
     <!-- Mirror, not merge: every deployed file whose path isn't produced by this transform
-         (e.g. dev-inedible-fixture.json, hand-copied in for testing) gets deleted. -->
+         (e.g. dev-inedible-fixture.json, hand-copied in for testing) gets deleted. Dev diet
+         fixtures (architecture §11) belong in ModConfig/dietsetup/diets/, not here, so they're
+         excluded from the source side too; that also lets the same Delete step above sweep
+         away a stray dev-*.json a previous build already deployed. -->
     <ItemGroup>
-      <DietSetupSourceAssets Include="$(MSBuildProjectDirectory)\assets\**\*" />
+      <DietSetupSourceAssets Include="$(MSBuildProjectDirectory)\assets\**\*" Exclude="$(MSBuildProjectDirectory)\assets\dietsetup\config\diets\dev-*.json" />
+      <DietSetupExcludedDevDiets Include="$(MSBuildProjectDirectory)\assets\dietsetup\config\diets\dev-*.json" />
       <DietSetupExpectedAssets Include="@(DietSetupSourceAssets->'$(DietSetupDeployPath)\assets\%(RecursiveDir)%(Filename)%(Extension)')" />
       <DietSetupStaleAssets Include="$(DietSetupDeployPath)\assets\**\*" Exclude="@(DietSetupExpectedAssets)" />
     </ItemGroup>
+    <Message Importance="high" Text="Excluded dev diet fixture from deploy: %(DietSetupExcludedDevDiets.Identity)" Condition="'@(DietSetupExcludedDevDiets)' != ''" />
     <Delete Files="@(DietSetupStaleAssets)" ContinueOnError="false" />
     <Copy SourceFiles="@(DietSetupSourceAssets)" DestinationFiles="@(DietSetupExpectedAssets)" ContinueOnError="false" />
     <Message Importance="high" Text="Deployed dietsetup assets: @(DietSetupSourceAssets->Count()) copied, @(DietSetupStaleAssets->Count()) deleted" />
