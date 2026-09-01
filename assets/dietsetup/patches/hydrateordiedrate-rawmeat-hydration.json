@@ -3,54 +3,63 @@
         "op": "replace",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/4/hydrationByType/*",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": 15.0
     },
     {
         "op": "replace",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/15/hydrationByType/*",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": 15.0
     },
     {
         "op": "replace",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/16/hydrationByType/*",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": 15.0
     },
     {
         "op": "replace",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/16/hydrationByType/game:redmeat-vintage",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": -175.0
     },
     {
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/253/hydrationByType/primitivesurvival:snakemeat-partbaked",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": -1.0
     },
     {
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/253/hydrationByType/primitivesurvival:snakemeat-charred",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": -4.0
     },
     {
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/259/hydrationByType/primitivesurvival:crabmeat-partbaked",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": -2.0
     },
     {
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/259/hydrationByType/primitivesurvival:crabmeat-charred",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": -7.0
     },
     {
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/-",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": {
             "Code": "feverstonewilds:bisonleg-*",
             "hydration": 0.0,
@@ -65,6 +74,7 @@
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/-",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": {
             "Code": "feverstonewilds:cockatrice-tail-*",
             "hydration": 0.0,
@@ -79,6 +89,7 @@
         "op": "add",
         "file": "hydrateordiedrate:config/hod.additemhydration.json",
         "path": "/Patches/-",
+        "dependsOn": [{"modid": "hydrateordiedrate"}],
         "value": {
             "Code": "feverstonewilds:ribs-*",
             "hydration": 0.0,
