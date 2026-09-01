@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using dietsetup.Binding;
 using dietsetup.Diet;
+using dietsetup.Grants;
 using dietsetup.Rules;
 using dietsetup.Tags;
 using HarmonyLib;
@@ -45,6 +46,11 @@ public class DietSetupModSystem : ModSystem
 
     private const string BindingsChannelName = "dietsetup-bindings";
     private IServerNetworkChannel? serverBindingsChannel;
+
+    // Separate channel from bindings, not reused: grants and bindings are different axes (§7.4)
+    // synced independently, and sharing a channel name across two payload types would be misleading.
+    private const string GrantsChannelName = "dietsetup-grants";
+    private IServerNetworkChannel? serverGrantsChannel;
 
     // Instance field, not a shared static (landmine C, task 1): client and server each get their
     // own DietSetupModSystem instance even in singleplayer, so this is already side-isolated.
@@ -211,6 +217,9 @@ public class DietSetupModSystem : ModSystem
         serverBindingsChannel = api.Network.RegisterChannel(BindingsChannelName)
             .RegisterMessageType<DietBindingsPacket>();
 
+        serverGrantsChannel = api.Network.RegisterChannel(GrantsChannelName)
+            .RegisterMessageType<DietFoodOverridesPacket>();
+
         api.Event.PlayerNowPlaying += OnPlayerNowPlaying;
 
         // Closes the nutrition-multiplier queue's only leak path (DietProfileRegistry, step 9) --
@@ -268,6 +277,15 @@ public class DietSetupModSystem : ModSystem
     {
         MigrateLegacyRotIntakeIfNeeded(byPlayer);
         serverBindingsChannel?.SendPacket(DietBindingsPacket.From(bindings), byPlayer);
+
+        // No retry on top of this: custom mod packets ride the client's TCP connection
+        // (Vintagestory.Server.NetworkChannel.SendPacket -> ServerMain.SendArbitraryPacket ->
+        // ConnectedClient.Socket.Send, backed by TcpNetConnection.Send/TcpSocket.SendAsync,
+        // decompiled 1.22 VintagestoryLib), which is reliable and ordered for as long as the
+        // connection lives -- the only failure mode is the socket exception path in
+        // ServerMain.SendPacket(int,byte[]) that calls DisconnectPlayer, i.e. total connection
+        // loss, not a silently dropped single packet on an otherwise-live client.
+        serverGrantsChannel?.SendPacket(DietFoodOverridesPacket.From(FoodOverrideRegistry.GrantedRows(EnumAppSide.Server)), byPlayer);
     }
 
     /// <summary>One-time copy of the pre-rename "dietsetup:rotIntake" pair to
@@ -545,6 +563,15 @@ public class DietSetupModSystem : ModSystem
         var hunger = entity.GetBehavior<EntityBehaviorHunger>();
         var health = entity.GetBehavior<EntityBehaviorHealth>();
 
+        string dietId = DietIdResolver.ResolveDetailed(entity, out DietIdResolver.ResolvePath dietPath, out string? matchedTrait);
+        string dietSummary = dietPath switch
+        {
+            DietIdResolver.ResolvePath.ExplicitOverride =>
+                $"id={dietId} source=explicit override ({DietIdResolver.OverrideAttribute}) override={dietId}",
+            DietIdResolver.ResolvePath.RaceTrait => $"id={dietId} source=race trait trait={matchedTrait}",
+            _ => $"id={dietId} source=default"
+        };
+
         string hungerSummary = hunger == null
             ? "unavailable (no hunger behavior on this entity)"
             : $"Sat={hunger.Saturation:F1}/{hunger.MaxSaturation:F1} FruitLvl={hunger.FruitLevel:F1} VegLvl={hunger.VegetableLevel:F1} ProteinLvl={hunger.ProteinLevel:F1} GrainLvl={hunger.GrainLevel:F1} DairyLvl={hunger.DairyLevel:F1}";
@@ -592,8 +619,9 @@ public class DietSetupModSystem : ModSystem
         });
 
         string msg = string.Format(
-            "EnableDietSystem={0}\nhunger: {1}\n{2}\nheld: {3}\npatches: {4}",
+            "EnableDietSystem={0}\ndiet: {1}\nhunger: {2}\n{3}\nheld: {4}\npatches: {5}",
             Config.EnableDietSystem,
+            dietSummary,
             hungerSummary,
             healthSummary,
             heldSummary,
@@ -666,6 +694,10 @@ public class DietSetupModSystem : ModSystem
             .RegisterMessageType<DietBindingsPacket>()
             .SetMessageHandler<DietBindingsPacket>(OnBindingsPacket);
 
+        api.Network.RegisterChannel(GrantsChannelName)
+            .RegisterMessageType<DietFoodOverridesPacket>()
+            .SetMessageHandler<DietFoodOverridesPacket>(packet => OnFoodOverridesPacket(api, packet));
+
         RegisterHandbookPage(api);
         RegisterTagDiagCommand(api);
         RegisterDietResolveCommand(api);
@@ -677,6 +709,22 @@ public class DietSetupModSystem : ModSystem
     private void OnBindingsPacket(DietBindingsPacket packet)
     {
         bindings = packet.ToBindingsFile();
+    }
+
+    /// <summary>Architecture 7.6 sync gap: a remote client's own ModConfig has no
+    /// food-overrides.json, so it grants 0 items at AssetsFinalize on its own. This handler can only
+    /// run after registration in StartClientSide, which the ModSystem lifecycle (Start -&gt;
+    /// AssetsLoaded -&gt; AssetsFinalize -&gt; StartClientSide, vsapi ModSystem.cs) always runs after
+    /// AssetsFinalize -- so DietRuleRegistry.AllDiets is already compiled by the time this fires,
+    /// confirmed from source ordering, not assumed by analogy. LogUnmatchedGrantedItems gets only
+    /// the delta this call newly applied (not the full accumulated Granted list), so singleplayer's
+    /// empty delta (everything already came from the file) logs nothing twice.</summary>
+    private void OnFoodOverridesPacket(ICoreClientAPI api, DietFoodOverridesPacket packet)
+    {
+        var log = new List<string>();
+        List<CollectibleObject> newlyApplied = FoodOverrideRegistry.ApplyFromPacket(api, packet, log);
+        DietLoadPipeline.LogUnmatchedGrantedItems(log, newlyApplied, DietRuleRegistry.AllDiets);
+        foreach (string line in log) api.Logger.Notification(line);
     }
 
     /// <summary>Diagnostic (prompt 5, ahead of the resolver): prints the resolved food-tag set

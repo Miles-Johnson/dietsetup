@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
 using Vintagestory.API.Util;
@@ -49,6 +50,7 @@ public static class FoodOverrideRegistry
         public string? Hash;
         public List<(string Pattern, string Category, float BaseSatiety)> Rows = new();
         public readonly List<CollectibleObject> Granted = new();
+        public readonly List<(CollectibleObject Collectible, EnumFoodCategory Category, float BaseSatiety)> GrantedRows = new();
     }
 
     private static readonly Dictionary<EnumAppSide, SideState> stateBySide = new();
@@ -66,6 +68,14 @@ public static class FoodOverrideRegistry
     /// matches" warning (architecture 6.1 rule 14). Empty until LoadApplyAndLog has run for this side.</summary>
     public static IReadOnlyList<CollectibleObject> GrantedCollectibles(EnumAppSide side) =>
         stateBySide.TryGetValue(side, out SideState? s) ? s.Granted : Array.Empty<CollectibleObject>();
+
+    /// <summary>Resolved (collectible, category, baseSatiety) triples granted on this side, for the
+    /// server to build DietFoodOverridesPacket from at send time (architecture 7.6 sync). Empty
+    /// until LoadApplyAndLog has run for this side.</summary>
+    public static IReadOnlyList<(CollectibleObject Collectible, EnumFoodCategory Category, float BaseSatiety)> GrantedRows(EnumAppSide side) =>
+        stateBySide.TryGetValue(side, out SideState? s)
+            ? s.GrantedRows
+            : Array.Empty<(CollectibleObject, EnumFoodCategory, float)>();
 
     /// <summary>First call for a side: loads, validates and applies the grants file. Every later call
     /// for the same side (i.e. /dietreload) never re-applies -- nutritionProps is a field on a
@@ -265,10 +275,83 @@ public static class FoodOverrideRegistry
             };
 
             state.Granted.Add(collectible);
+            state.GrantedRows.Add((collectible, row.Category, row.BaseSatiety));
             grantedCount++;
         }
 
         log.Add($"[dietsetup] food-overrides: {grantedCount} item(s) granted nutritionProps ({rows.Count} pattern row(s))");
+    }
+
+    /// <summary>Applies a server-resolved grant packet client-side (architecture 7.6, dedicated-
+    /// multiplayer gap: a remote client's own ModConfig has no food-overrides.json to read). Every
+    /// row already passed the server's full match/validate pass (rules 2b-2e) before it could reach
+    /// GrantedRows, so this does not re-run those checks -- only the client-local concern a
+    /// server-side resolve can't see: does this collectible exist here, and does it already carry
+    /// nutritionProps. Returns the collectibles newly granted by this call (the delta, not the full
+    /// accumulated Granted list) for LogUnmatchedGrantedItems.</summary>
+    public static List<CollectibleObject> ApplyFromPacket(ICoreClientAPI capi, DietFoodOverridesPacket packet, List<string> log)
+    {
+        SideState state = GetState(EnumAppSide.Client);
+        var newlyApplied = new List<CollectibleObject>();
+        int alreadyGranted = 0, notFound = 0, catalogMismatch = 0, badCategory = 0;
+
+        int count = Math.Min(packet.ItemCodes.Length, Math.Min(packet.Categories.Length, packet.BaseSatiety.Length));
+        for (int i = 0; i < count; i++)
+        {
+            string itemCode = packet.ItemCodes[i];
+            var loc = new AssetLocation(itemCode);
+            CollectibleObject? collectible = (CollectibleObject?)capi.World.GetItem(loc) ?? capi.World.GetBlock(loc);
+
+            if (collectible == null)
+            {
+                capi.Logger.Warning("[dietsetup] food-overrides packet: item '{0}' not found client-side, grant skipped (client/server mod mismatch?).", itemCode);
+                notFound++;
+                continue;
+            }
+
+            // Singleplayer case: the client already granted this exact item from its own local
+            // file read at AssetsFinalize, and the packet still arrives (OnPlayerNowPlaying fires
+            // unconditionally) -- silent no-op, not a warning, since nothing is wrong here.
+            if (state.Granted.Contains(collectible))
+            {
+                alreadyGranted++;
+                continue;
+            }
+
+            if (collectible.NutritionProps != null)
+            {
+                capi.Logger.Warning("[dietsetup] food-overrides packet: item '{0}' already has nutritionProps client-side but the server had to grant it -- client/server catalog mismatch, grant skipped.", itemCode);
+                catalogMismatch++;
+                continue;
+            }
+
+            // The category crosses the wire as a string; a parse failure must not fall back to a
+            // default category (7.6 has no defaults -- that's the "balanced" 0.4 defect this
+            // section exists to prevent) and must not apply the row at all.
+            if (!TryParseCategory(packet.Categories[i], out EnumFoodCategory category))
+            {
+                capi.Logger.Warning("[dietsetup] food-overrides packet: item '{0}' has unrecognized category '{1}', grant skipped.", itemCode, packet.Categories[i]);
+                badCategory++;
+                continue;
+            }
+
+            collectible.NutritionProps = new FoodNutritionProperties
+            {
+                FoodCategory = category,
+                Satiety = packet.BaseSatiety[i],
+                Health = 0f,
+                // Damage is a rule effect (7.1), not authored here. EatenStack null matches
+                // ValidateAndApply's grant construction above -- see that branch's comment.
+            };
+
+            state.Granted.Add(collectible);
+            state.GrantedRows.Add((collectible, category, packet.BaseSatiety[i]));
+            newlyApplied.Add(collectible);
+        }
+
+        log.Add($"[dietsetup] food-overrides packet: {newlyApplied.Count} newly applied, {alreadyGranted} already granted, " +
+                $"{notFound} not found, {catalogMismatch} catalog mismatch, {badCategory} bad category ({count} row(s) received)");
+        return newlyApplied;
     }
 
     private static bool TryParseCategory(string raw, out EnumFoodCategory category) =>

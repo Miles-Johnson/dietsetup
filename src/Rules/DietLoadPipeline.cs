@@ -110,7 +110,7 @@ public static class DietLoadPipeline
 
         // Rule 14 (warning): per diet, granted items (7.6) no rule matches -- one line per diet
         // naming the count, not one line per item.
-        warningCount += LogUnmatchedGrantedItems(api, log, compiledTable);
+        warningCount += LogUnmatchedGrantedItems(log, FoodOverrideRegistry.GrantedCollectibles(api.Side), compiledTable.Values);
 
         // Step 8
         log.Add($"[dietsetup] diets: {compiledTable.Count} loaded, {refused.Count} refused");
@@ -240,16 +240,19 @@ public static class DietLoadPipeline
 
     // Load-time only (like the rest of this pipeline) -- resolves each granted item against each
     // compiled diet with the pure core, not the per-bite resolver Standing rule 6 is about.
-    private static int LogUnmatchedGrantedItems(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable)
+    // Takes explicit collectibles/diets rather than reading FoodOverrideRegistry and a pipeline-
+    // local table directly, so the client's packet-delivered grant delta (architecture 7.6 sync)
+    // can reuse this exact logic instead of a second implementation.
+    public static int LogUnmatchedGrantedItems(List<string> log, IEnumerable<CollectibleObject> granted, IEnumerable<CompiledDiet> diets)
     {
-        IReadOnlyList<CollectibleObject> granted = FoodOverrideRegistry.GrantedCollectibles(api.Side);
-        if (granted.Count == 0) return 0;
+        List<CollectibleObject> grantedList = granted as List<CollectibleObject> ?? granted.ToList();
+        if (grantedList.Count == 0) return 0;
 
         int dietsWithUnmatched = 0;
-        foreach (CompiledDiet diet in compiledTable.Values.OrderBy(d => d.Id, StringComparer.Ordinal))
+        foreach (CompiledDiet diet in diets.OrderBy(d => d.Id, StringComparer.Ordinal))
         {
             int unmatched = 0;
-            foreach (CollectibleObject collectible in granted)
+            foreach (CollectibleObject collectible in grantedList)
             {
                 ulong mask = FoodTagRegistry.GetStaticMask(collectible);
                 if (!DietResolver.Resolve(diet, mask, 0f).Matched) unmatched++;

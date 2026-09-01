@@ -29,12 +29,28 @@ public static class DietIdResolver
         return DietRuleRegistry.GetDiet(dietId) ?? DietRuleRegistry.GetDiet(DefaultDietId);
     }
 
-    public static string Resolve(Entity? forEntity)
+    public enum ResolvePath { ExplicitOverride, RaceTrait, Default }
+
+    public static string Resolve(Entity? forEntity) => ResolveCore(forEntity, out _, out _);
+
+    /// <summary>/dietdiag's entry point (task 2): same steps as Resolve, plus which path fired
+    /// and, for the race-trait path, which trait matched -- never called per-bite, so the extra
+    /// out params are fine here even though Resolve itself must stay allocation-free.</summary>
+    public static string ResolveDetailed(Entity? forEntity, out ResolvePath path, out string? matchedTrait) =>
+        ResolveCore(forEntity, out path, out matchedTrait);
+
+    private static string ResolveCore(Entity? forEntity, out ResolvePath path, out string? matchedTrait)
     {
+        path = ResolvePath.Default;
+        matchedTrait = null;
         if (forEntity == null) return DefaultDietId;
 
         string? overrideId = forEntity.WatchedAttributes?.GetString(OverrideAttribute);
-        if (!string.IsNullOrEmpty(overrideId)) return overrideId;
+        if (!string.IsNullOrEmpty(overrideId))
+        {
+            path = ResolvePath.ExplicitOverride;
+            return overrideId;
+        }
 
         // Side-specific instance, not a shared static (landmine C) -- forEntity.Api resolves to
         // the ModSystem instance for whichever side is asking, same pattern rfmechanics'
@@ -46,7 +62,12 @@ public static class DietIdResolver
         {
             foreach ((string traitCode, string dietId) in bindings.Bindings)
             {
-                if (HasTrait(iplayer, traitCode)) return dietId;
+                if (HasTrait(iplayer, traitCode))
+                {
+                    path = ResolvePath.RaceTrait;
+                    matchedTrait = traitCode;
+                    return dietId;
+                }
             }
         }
 
