@@ -41,15 +41,27 @@
     </Reference>
   </ItemGroup>
 
-  <!-- DLL + PDB only, nothing else; deps.json etc. stay out of the deploy folder.
-       ContinueOnError defaults to false: a failed copy fails the build, not a silent skip
-       (2026-09-01 session read a stale deployed binary three times over exactly that gap). -->
+  <!-- DLL + PDB + modinfo.json, plus a full mirror of assets\. ContinueOnError defaults to
+       false throughout: a failed copy fails the build, not a silent skip (2026-09-01 session
+       read a stale deployed binary three times over exactly that gap). -->
   <Target Name="DeployMod" AfterTargets="Build">
     <ItemGroup>
       <DietSetupDeployFiles Include="$(TargetPath)" />
       <DietSetupDeployFiles Include="$(TargetDir)$(TargetName).pdb" />
+      <DietSetupDeployFiles Include="$(MSBuildProjectDirectory)\modinfo.json" />
     </ItemGroup>
     <Copy SourceFiles="@(DietSetupDeployFiles)" DestinationFolder="$(DietSetupDeployPath)" ContinueOnError="false" />
+
+    <!-- Mirror, not merge: every deployed file whose path isn't produced by this transform
+         (e.g. dev-inedible-fixture.json, hand-copied in for testing) gets deleted. -->
+    <ItemGroup>
+      <DietSetupSourceAssets Include="$(MSBuildProjectDirectory)\assets\**\*" />
+      <DietSetupExpectedAssets Include="@(DietSetupSourceAssets->'$(DietSetupDeployPath)\assets\%(RecursiveDir)%(Filename)%(Extension)')" />
+      <DietSetupStaleAssets Include="$(DietSetupDeployPath)\assets\**\*" Exclude="@(DietSetupExpectedAssets)" />
+    </ItemGroup>
+    <Delete Files="@(DietSetupStaleAssets)" ContinueOnError="false" />
+    <Copy SourceFiles="@(DietSetupSourceAssets)" DestinationFiles="@(DietSetupExpectedAssets)" ContinueOnError="false" />
+    <Message Importance="high" Text="Deployed dietsetup assets: @(DietSetupSourceAssets->Count()) copied, @(DietSetupStaleAssets->Count()) deleted" />
     <Message Importance="high" Text="Deployed dietsetup to $(DietSetupDeployPath)" />
   </Target>
 
