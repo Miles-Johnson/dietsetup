@@ -14,6 +14,11 @@ public static class DietIdResolver
     public const string OverrideAttribute = "dietsetup:dietOverride";
     public const string DefaultDietId = "base";
 
+    // Reserved for /dietassignrules clear -- DietLoadPipeline (rule 15) refuses any diet
+    // authored with this id so the command can never confuse "clear the override" with
+    // "assign the diet literally named clear".
+    public const string ClearKeyword = "clear";
+
     /// <summary>Resolves a diet id and looks it up in the compiled table, falling back to
     /// "base" if the resolved id isn't a loaded diet (e.g. a stale binding). Returns null only
     /// if "base" itself isn't loaded either -- an unconfigured/broken install, callers should

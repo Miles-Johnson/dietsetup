@@ -394,22 +394,29 @@ public class DietSetupModSystem : ModSystem
     }
 
     /// <summary>Standing admin tool, not a throwaway: writes DietIdResolver.OverrideAttribute
-    /// (architecture 4.5's explicit-override tier) on the caller's own entity. This was previously
-    /// a no-op that only validated the id and returned a success message without writing anything
-    /// -- every caller still resolved through the trait/default tiers. WatchedAttributes, not
-    /// EntityStats: it's read fresh on every resolve (DietIdResolver.Resolve), so a retune reaches
-    /// the player on their next meal with nothing to migrate, and it auto-syncs to the owning
-    /// client the same way vanilla's own hunger levels do -- no separate sync code needed.</summary>
+    /// (architecture 4.5's explicit-override tier) on the caller's own entity, or removes it for
+    /// the reserved "clear" argument (DietLoadPipeline rule 15 refuses any diet actually named
+    /// "clear", so the two can never collide). WatchedAttributes, not EntityStats: it's read fresh
+    /// on every resolve (DietIdResolver.Resolve), so a retune reaches the player on their next meal
+    /// with nothing to migrate, and it auto-syncs to the owning client the same way vanilla's own
+    /// hunger levels do -- no separate sync code needed.</summary>
     private void RegisterAssignRulesDietCommand(ICoreServerAPI api)
     {
         api.ChatCommands.Create("dietassignrules")
-            .WithDescription("Admin: set your own diet override to a rules-engine diet id, bypassing trait/default resolution")
+            .WithDescription("Admin: set your own diet override to a rules-engine diet id (bypassing trait/default resolution), or 'clear' to remove the override")
             .RequiresPrivilege(Privilege.controlserver)
             .WithArgs(api.ChatCommands.Parsers.Word("dietId"))
             .HandleWith(args =>
             {
                 IPlayer caller = args.Caller.Player;
                 string dietId = (string)args[0];
+
+                if (dietId == DietIdResolver.ClearKeyword)
+                {
+                    caller.Entity.WatchedAttributes.RemoveAttribute(DietIdResolver.OverrideAttribute);
+                    string resolved = DietIdResolver.Resolve(caller.Entity);
+                    return TextCommandResult.Success($"{DietIdResolver.OverrideAttribute} cleared, now resolving to '{resolved}' (trait/default).");
+                }
 
                 if (DietRuleRegistry.GetDiet(dietId) == null)
                 {

@@ -71,6 +71,14 @@ public static class DietLoadPipeline
             var fatal = new List<DietValidationMessage>();
             var warnings = new List<DietValidationMessage>();
 
+            if (id == DietIdResolver.ClearKeyword)
+            {
+                var reserved = new DietValidationMessage(15, "id 'clear' is reserved for /dietassignrules clear, diet refused");
+                refused.Add((id, reserved));
+                api.Logger.Error("[dietsetup] diet '{0}': rule {1}, {2}", id, reserved.Rule, reserved.Text);
+                continue;
+            }
+
             DietDocumentFile? resolved = DietExtendsResolver.Resolve(id, rawDocs, out string? extendsError);
             if (resolved == null)
             {
