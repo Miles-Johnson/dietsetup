@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using dietsetup.Binding;
+using dietsetup.Grants;
 using dietsetup.Tags;
 using Newtonsoft.Json;
 using Vintagestory.API.Common;
@@ -46,6 +47,11 @@ public static class DietLoadPipeline
 
         // Step 1
         FoodTagRegistry.Reset();
+
+        // Edibility grants (architecture 7.6) -- must run before tag resolution below, so a
+        // granted item's freshly-set NutritionProps is visible to FoodTagRegistry's
+        // relevance/untagged-nutritious accounting instead of looking untagged-and-irrelevant.
+        FoodOverrideRegistry.LoadApplyAndLog(api, log);
 
         // Step 2
         LoadTags(api, log);
@@ -93,6 +99,10 @@ public static class DietLoadPipeline
         }
 
         DietRuleRegistry.ReplaceAll(compiledTable);
+
+        // Rule 14 (warning): per diet, granted items (7.6) no rule matches -- one line per diet
+        // naming the count, not one line per item.
+        warningCount += LogUnmatchedGrantedItems(api, log, compiledTable);
 
         // Step 8
         log.Add($"[dietsetup] diets: {compiledTable.Count} loaded, {refused.Count} refused");
@@ -218,6 +228,32 @@ public static class DietLoadPipeline
         }
 
         return raw;
+    }
+
+    // Load-time only (like the rest of this pipeline) -- resolves each granted item against each
+    // compiled diet with the pure core, not the per-bite resolver Standing rule 6 is about.
+    private static int LogUnmatchedGrantedItems(ICoreAPI api, List<string> log, Dictionary<string, CompiledDiet> compiledTable)
+    {
+        IReadOnlyList<CollectibleObject> granted = FoodOverrideRegistry.GrantedCollectibles(api.Side);
+        if (granted.Count == 0) return 0;
+
+        int dietsWithUnmatched = 0;
+        foreach (CompiledDiet diet in compiledTable.Values.OrderBy(d => d.Id, StringComparer.Ordinal))
+        {
+            int unmatched = 0;
+            foreach (CollectibleObject collectible in granted)
+            {
+                ulong mask = FoodTagRegistry.GetStaticMask(collectible);
+                if (!DietResolver.Resolve(diet, mask, 0f).Matched) unmatched++;
+            }
+
+            if (unmatched > 0)
+            {
+                log.Add($"[dietsetup]   diet '{diet.Id}': {unmatched} granted item(s) not matched by any rule");
+                dietsWithUnmatched++;
+            }
+        }
+        return dietsWithUnmatched;
     }
 
     private static string FormatDietRow(CompiledDiet diet, int idColumnWidth)
