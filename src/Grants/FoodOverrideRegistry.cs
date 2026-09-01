@@ -261,14 +261,7 @@ public static class FoodOverrideRegistry
                 Satiety = row.BaseSatiety,
                 Health = 0f,
                 // Damage is a rule effect (7.1), not authored here -- the grant is global, damage varies per race.
-                EatenStack = new JsonItemStack
-                {
-                    Code = collectible.Code,
-                    Type = collectible is Block ? EnumItemClass.Block : EnumItemClass.Item,
-                    // Code null is the JsonItemStack.CloneTo crash fixed this session (DietSatietyFold's
-                    // doc) -- Code and ResolvedItemstack must both be set, not just one.
-                    ResolvedItemstack = new ItemStack(collectible)
-                }
+                // EatenStack is the container a food returns, not the food. Null is correct for a bare grant.
             };
 
             state.Granted.Add(collectible);
