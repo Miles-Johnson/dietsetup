@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "orc",
+  "extends": "base",
+  "categories": {
+    "Fruit": { "capacity": 0.0 },
+    "Vegetable": { "capacity": 0.0 },
+    "Grain": { "capacity": 0.2 },
+    "Protein": { "capacity": 1.2 },
+    "Dairy": { "capacity": 0.8 }
+  },
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+  "rules": [
+    {
+      "requires": ["meat", "raw"],
+      "priority": 10,
+      "verdict": "edible",
+      "satietyMult": 1.0,
+      "nutritionMult": 0.4
+    }
+  ]
+}
