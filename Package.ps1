@@ -112,6 +112,33 @@ if ($Configuration -eq "Release") {
     $zip.Dispose()
     Write-Host "[$modId] Packaged $zipPath"
 
+    # Catches a regression of the Compress-Archive backslash bug (proven against
+    # tools/zip-packaging-fixtures/known-bad-backslash.zip) plus the other way this fails: a wrong
+    # staging root producing a zip with no assets/<modid>/ entries at all. Runs before the staging
+    # copy so a bad zip never reaches the server.
+    $verifyZip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entryNames = $verifyZip.Entries | ForEach-Object { $_.FullName }
+    } finally {
+        $verifyZip.Dispose()
+    }
+
+    $zipErrors = @()
+    $backslashEntries = $entryNames | Where-Object { $_.Contains('\') }
+    if ($backslashEntries) { $zipErrors += "backslash in entry name(s): $($backslashEntries -join ', ')" }
+    $leadingSlashEntries = $entryNames | Where-Object { $_.StartsWith('/') }
+    if ($leadingSlashEntries) { $zipErrors += "leading slash in entry name(s): $($leadingSlashEntries -join ', ')" }
+    $dupeEntries = $entryNames | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name }
+    if ($dupeEntries) { $zipErrors += "duplicate entry name(s): $($dupeEntries -join ', ')" }
+    $assetsPrefix = "assets/$modId/"
+    if (-not ($entryNames | Where-Object { $_.StartsWith($assetsPrefix) })) {
+        $zipErrors += "no entry starts with '$assetsPrefix' -- wrong staging root?"
+    }
+    if ($zipErrors.Count -gt 0) {
+        Write-Error "[$modId] Packaged zip failed entry-name validation:`n$($zipErrors -join "`n")"
+        exit 1
+    }
+
     if ($StagingPath -ne "") {
         if (-not (Test-Path $StagingPath)) { New-Item -ItemType Directory -Path $StagingPath -Force | Out-Null }
         Copy-Item $zipPath (Join-Path $StagingPath (Split-Path -Leaf $zipPath)) -Force
