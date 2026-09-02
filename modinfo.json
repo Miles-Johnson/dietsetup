@@ -6,7 +6,7 @@
     "Question"
   ],
   "description": "One-time diet preference setup for new characters. Adds sliders to scale how much satiety/nutrition your character gains from each vanilla food category (Fruit, Vegetable, Protein, Grain, Dairy), so you can build a dedicated carnivore, herbivore, or anything in between.",
-  "version": "1.0.0-test.1",
+  "version": "1.0.1-test.1",
   "requiredOnClient": true,
   "requiredOnServer": true,
   "dependencies": {
