@@ -41,33 +41,39 @@
     </Reference>
   </ItemGroup>
 
-  <!-- DLL + PDB + modinfo.json, plus a full mirror of assets\. ContinueOnError defaults to
-       false throughout: a failed copy fails the build, not a silent skip (2026-09-01 session
-       read a stale deployed binary three times over exactly that gap). -->
-  <Target Name="DeployMod" AfterTargets="Build">
+  <!-- Stamps GitInfo.g.cs with the short SHA + dirty flag so a running build can log what it
+       actually is (Phase A). git absent/unavailable -> "unknown", never a build failure. -->
+  <Target Name="GenerateGitInfo" BeforeTargets="CoreCompile">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" ItemName="DietSetupGitShaOutput" />
+    </Exec>
+    <Exec Command="git status --porcelain" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" ItemName="DietSetupGitStatusOutput" />
+    </Exec>
+    <PropertyGroup>
+      <DietSetupGitSha Condition="'@(DietSetupGitShaOutput)' != ''">@(DietSetupGitShaOutput)</DietSetupGitSha>
+      <DietSetupGitSha Condition="'$(DietSetupGitSha)' == ''">unknown</DietSetupGitSha>
+      <DietSetupGitDirty Condition="'@(DietSetupGitStatusOutput)' != ''">true</DietSetupGitDirty>
+      <DietSetupGitDirty Condition="'$(DietSetupGitDirty)' == ''">false</DietSetupGitDirty>
+    </PropertyGroup>
     <ItemGroup>
-      <DietSetupDeployFiles Include="$(TargetPath)" />
-      <DietSetupDeployFiles Include="$(TargetDir)$(TargetName).pdb" />
-      <DietSetupDeployFiles Include="$(MSBuildProjectDirectory)\modinfo.json" />
+      <DietSetupGitInfoLines Include="internal static class GitInfo" />
+      <DietSetupGitInfoLines Include="{" />
+      <DietSetupGitInfoLines Include="    public const string Sha = &quot;$(DietSetupGitSha)&quot;%3b" />
+      <DietSetupGitInfoLines Include="    public const bool Dirty = $(DietSetupGitDirty)%3b" />
+      <DietSetupGitInfoLines Include="}" />
     </ItemGroup>
-    <Copy SourceFiles="@(DietSetupDeployFiles)" DestinationFolder="$(DietSetupDeployPath)" ContinueOnError="false" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)GitInfo.g.cs" Lines="@(DietSetupGitInfoLines)" Overwrite="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)GitInfo.g.cs" />
+    </ItemGroup>
+  </Target>
 
-    <!-- Mirror, not merge: every deployed file whose path isn't produced by this transform
-         (e.g. dev-inedible-fixture.json, hand-copied in for testing) gets deleted. Dev diet
-         fixtures (architecture §11) belong in ModConfig/dietsetup/diets/, not here, so they're
-         excluded from the source side too; that also lets the same Delete step above sweep
-         away a stray dev-*.json a previous build already deployed. -->
-    <ItemGroup>
-      <DietSetupSourceAssets Include="$(MSBuildProjectDirectory)\assets\**\*" Exclude="$(MSBuildProjectDirectory)\assets\dietsetup\config\diets\dev-*.json" />
-      <DietSetupExcludedDevDiets Include="$(MSBuildProjectDirectory)\assets\dietsetup\config\diets\dev-*.json" />
-      <DietSetupExpectedAssets Include="@(DietSetupSourceAssets->'$(DietSetupDeployPath)\assets\%(RecursiveDir)%(Filename)%(Extension)')" />
-      <DietSetupStaleAssets Include="$(DietSetupDeployPath)\assets\**\*" Exclude="@(DietSetupExpectedAssets)" />
-    </ItemGroup>
-    <Message Importance="high" Text="Excluded dev diet fixture from deploy: %(DietSetupExcludedDevDiets.Identity)" Condition="'@(DietSetupExcludedDevDiets)' != ''" />
-    <Delete Files="@(DietSetupStaleAssets)" ContinueOnError="false" />
-    <Copy SourceFiles="@(DietSetupSourceAssets)" DestinationFiles="@(DietSetupExpectedAssets)" ContinueOnError="false" />
-    <Message Importance="high" Text="Deployed dietsetup assets: @(DietSetupSourceAssets->Count()) copied, @(DietSetupStaleAssets->Count()) deleted" />
-    <Message Importance="high" Text="Deployed dietsetup to $(DietSetupDeployPath)" />
+  <!-- Stages, mirrors to the client Mods folder, and (Release only) zips + copies to
+       $(MOD_STAGING_PATH), all from the single exclude list owned by Package.ps1, so the
+       client folder and the server zip can never diverge from each other (Phase A D1/D6). -->
+  <Target Name="Deploy" AfterTargets="Build">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Package.ps1&quot; -Dll &quot;$(TargetPath)&quot; -Pdb &quot;$(TargetDir)$(TargetName).pdb&quot; -DeployPath &quot;$(DietSetupDeployPath)&quot; -StagingPath &quot;$(MOD_STAGING_PATH)&quot; -Configuration $(Configuration)" ContinueOnError="false" />
   </Target>
 
 </Project>

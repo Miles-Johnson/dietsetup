@@ -72,6 +72,14 @@ public class DietSetupModSystem : ModSystem
         base.Start(api);
         LoadConfig(api);
 
+        api.Logger.Notification("[{0}] Build {1} ({2}{3})", Mod.Info.ModID, Mod.Info.Version,
+            GitInfo.Sha, GitInfo.Dirty ? "-dirty" : "");
+
+        if (!api.ModLoader.IsModEnabled("raceframework"))
+        {
+            api.Logger.Notification("[{0}] raceframework not detected — trait-based diet bindings will never match; running in Mods-solo mode.", Mod.Info.ModID);
+        }
+
         // Always available, inert unless a rule references its key -- see the class doc.
         DietEffects.Register("dietsetup:debuglog", new DebugLogConsequenceEffect());
 

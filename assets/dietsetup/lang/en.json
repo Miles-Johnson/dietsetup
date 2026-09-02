@@ -1,13 +1,4 @@
 {
-    "dietsetup:dialogtitle": "Diet Setup",
-    "dietsetup:dialogintro": "Choose a diet. Categories your build neglects give little or no benefit, and some builds react badly to eating them at all -- see the diet guide in your handbook.",
-    "dietsetup:profile-balanced": "Balanced",
-    "dietsetup:profile-carnivore": "Carnivore",
-    "dietsetup:profile-herbivore": "Herbivore",
-    "dietsetup:profile-elf": "Elf",
-    "dietsetup:noaccess": "You don't have permission to change your diet. An admin needs to grant you access with /dietselgrant.",
-    "dietsetup:granted-admin": "Granted {0} one-time permission to reopen the Diet Setup dialog.",
-    "dietsetup:granted-target": "An admin has granted you permission to reopen your Diet Setup dialog. Use /dietsel to open it.",
     "dietsetup:verdict-inedible": "Inedible for you",
     "dietsetup:verdict-harmful": "Harmful for you",
     "dietsetup:verdict-nourishing": "Especially nourishing for you",
