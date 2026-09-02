@@ -39,6 +39,7 @@ public static class DietLoadPipeline
 {
     private const string ModConfigDietsDir = "dietsetup/diets";
     private const string ModConfigBindingsFile = "dietsetup/bindings.json";
+    private const string ModConfigFoodTagsFile = "dietsetup/foodtags.json";
 
     public static DietLoadResult RunAndLog(ICoreAPI api)
     {
@@ -154,6 +155,31 @@ public static class DietLoadPipeline
         else if (totalTags == 0)
         {
             api.Logger.Warning("[dietsetup] tags: '{0}' found in {1} domain(s) but registered 0 tags -- check for empty/malformed content", tagsPath, files.Count);
+        }
+
+        string modConfigPath = Path.Combine(GamePaths.ModConfig, ModConfigFoodTagsFile);
+        if (!File.Exists(modConfigPath)) return;
+
+        FoodTagConfigFile? overrideFile;
+        try
+        {
+            overrideFile = JsonConvert.DeserializeObject<FoodTagConfigFile>(File.ReadAllText(modConfigPath));
+        }
+        catch (Exception ex)
+        {
+            api.Logger.Error("[dietsetup] ModConfig foodtags override '{0}' failed to parse, asset tags kept: {1}", modConfigPath, ex.Message);
+            return;
+        }
+
+        if (overrideFile == null)
+        {
+            api.Logger.Error("[dietsetup] ModConfig foodtags override '{0}' is empty or invalid, asset tags kept", modConfigPath);
+            return;
+        }
+
+        foreach (string tag in FoodTagRegistry.ApplyOverrides(overrideFile))
+        {
+            log.Add($"[dietsetup] tag '{tag}': ModConfig override wins ({modConfigPath}) over asset ({tagsPath})");
         }
     }
 

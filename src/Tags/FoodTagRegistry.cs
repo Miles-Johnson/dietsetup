@@ -120,6 +120,31 @@ public static class FoodTagRegistry
         }
     }
 
+    /// <summary>ModConfig override on top of the asset merge (LoadFrom): a tag id here replaces
+    /// that id's whole pattern list rather than merging into it, since an admin overriding
+    /// "meat" almost certainly wants the asset patterns gone, not appended to. Returns the tag
+    /// ids that already existed before this call, for the caller's override-wins log line -- a
+    /// brand-new tag id introduced only by ModConfig has nothing to log a win over.</summary>
+    public static List<string> ApplyOverrides(FoodTagConfigFile file)
+    {
+        var replaced = new List<string>();
+        ApplyOverrideAxis(file.Source, FoodTagAxis.Source, replaced);
+        ApplyOverrideAxis(file.State, FoodTagAxis.State, replaced);
+        ApplyOverrideAxis(file.Form, FoodTagAxis.Form, replaced);
+        return replaced;
+    }
+
+    private static void ApplyOverrideAxis(Dictionary<string, string[]> tags, FoodTagAxis axis, List<string> replaced)
+    {
+        foreach ((string tag, string[] patterns) in tags)
+        {
+            bool existed = tagBits.ContainsKey(tag);
+            EnsureBit(tag, axis);
+            tagPatterns[tag] = new List<string>(patterns);
+            if (existed) replaced.Add(tag);
+        }
+    }
+
     private static int EnsureBit(string tag, FoodTagAxis axis)
     {
         if (tagBits.TryGetValue(tag, out int existing))
