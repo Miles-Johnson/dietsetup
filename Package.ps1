@@ -77,7 +77,7 @@ $modId = $modInfo.modid
 $version = $modInfo.version
 
 $excludeGlobs = @(
-    "assets\dietsetup\config\diets\dev-*.json"
+    "assets\dietsetup\*dev-*.json"
 )
 
 $DeployPath = $DeployPath.TrimEnd('\')
