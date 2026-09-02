@@ -99,7 +99,17 @@ if ($Configuration -eq "Release") {
 
     $zipPath = Join-Path $artifactsDir "${modId}_${version}.zip"
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
+
+    # Compress-Archive under Windows PowerShell 5.1 writes \ as the entry separator, which Linux
+    # treats as a literal filename character -- the game's asset VFS then finds nothing under
+    # assets/<domain>/... Writing entries by hand keeps the separator explicit.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
+    Get-ChildItem -Path $stageDir -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($stageDir.Length).TrimStart('\','/').Replace('\','/')
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $_.FullName, $rel)
+    }
+    $zip.Dispose()
     Write-Host "[$modId] Packaged $zipPath"
 
     if ($StagingPath -ne "") {
