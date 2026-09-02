@@ -132,12 +132,28 @@ public static class DietLoadPipeline
 
     private static void LoadTags(ICoreAPI api, List<string> log)
     {
-        Dictionary<AssetLocation, FoodTagConfigFile> files = api.Assets.GetMany<FoodTagConfigFile>(api.Logger, "config/foodtags.json");
+        const string tagsPath = "config/foodtags.json";
+        Dictionary<AssetLocation, FoodTagConfigFile> files = api.Assets.GetMany<FoodTagConfigFile>(api.Logger, tagsPath);
+
+        int totalTags = 0;
         foreach ((AssetLocation loc, FoodTagConfigFile file) in files)
         {
             FoodTagRegistry.LoadFrom(file);
             int count = file.Source.Count + file.State.Count + file.Form.Count;
+            totalTags += count;
             api.Logger.Notification("[dietsetup] tags: domain '{0}' registered {1} tag(s)", loc.Domain, count);
+        }
+
+        // No files found is a packaging/path problem (e.g. a zip whose entries don't match the
+        // asset path the VFS expects); files found but zero tags is a content problem (empty or
+        // malformed JSON) -- distinct causes need distinct log lines to point at the right fix.
+        if (files.Count == 0)
+        {
+            api.Logger.Warning("[dietsetup] tags: no '{0}' found in any domain -- 0 tags registered", tagsPath);
+        }
+        else if (totalTags == 0)
+        {
+            api.Logger.Warning("[dietsetup] tags: '{0}' found in {1} domain(s) but registered 0 tags -- check for empty/malformed content", tagsPath, files.Count);
         }
     }
 
