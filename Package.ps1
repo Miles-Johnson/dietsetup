@@ -36,7 +36,9 @@ Copy-Item $modInfoPath (Join-Path $stageDir "modinfo.json") -Force
 if ($Dll -ne "" -and (Test-Path $Dll)) {
     Copy-Item $Dll (Join-Path $stageDir (Split-Path -Leaf $Dll)) -Force
 }
-if ($Pdb -ne "" -and (Test-Path $Pdb)) {
+# Excluded from Release: $excludeGlobs only filters the assets/ walk below, not this copy, and
+# a pdb has no reason to ship in the server/client zip.
+if ($Pdb -ne "" -and (Test-Path $Pdb) -and $Configuration -ne "Release") {
     Copy-Item $Pdb (Join-Path $stageDir (Split-Path -Leaf $Pdb)) -Force
 }
 
