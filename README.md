@@ -150,3 +150,5 @@ Repo and installation:
 https://github.com/Miles-Johnson/dietsetup
 
 Feedback, testing (especially on dedicated servers), and race-mod integration reports are very welcome.
+
+Test if its Live Text
