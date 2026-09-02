@@ -159,14 +159,12 @@ if ($Configuration -eq "Release") {
 
     $zipPath = Join-Path $artifactsDir "${modId}_${version}.zip"
     if (Test-Path $zipPath) {
-        # A same-named zip with different content means this version string was reused across two
-        # different builds (happened once already: an artifacts/ zip got silently replaced by a
-        # differently-built same-named zip). Refuse instead of overwriting -- forces a version bump.
+        # Same-name/different-content is now the normal case: test builds keep the version string
+        # fixed across iterations, so this reports the overwrite instead of refusing it.
         $existingHash = Get-ZipContentHash -ZipPath $zipPath
         $newHash = Get-StagedContentHash -StageRoot $stageDir
         if ($existingHash -ne $newHash) {
-            Write-Error "[$modId] Refusing to overwrite ${zipPath}: its content ($existingHash) does not match this build ($newHash). Bump the version in modinfo.json instead of repackaging a different build under the same version string."
-            exit 1
+            Write-Host "[$modId] Content changed for ${zipPath}: $existingHash -> $newHash. Overwriting." -ForegroundColor Yellow
         }
         Remove-Item $zipPath -Force
     }
