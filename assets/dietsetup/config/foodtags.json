@@ -1,20 +1,20 @@
 {
-  "_note": "whole has no patterns here on purpose. A wildcard on item code can't express 'not ground, not liquid, not meal', so FoodTagRegistry.ResolveStaticTags applies whole as the form-axis default instead: any collectible with a source tag or vanilla nutrition that matches none of ground/liquid/meal gets whole.",
+  "_note": "whole has no patterns here on purpose. A wildcard on item code can't express 'not ground, not liquid, not meal', so FoodTagRegistry.ResolveStaticTags applies whole as the form-axis default instead: any collectible with a source tag or vanilla nutrition that matches none of ground/liquid/meal gets whole. Patterns elsewhere in this file fall into three kinds: (1) patterns that match live vanilla food; (2) patterns that match real vanilla codes carrying no nutritionProps, kept for a future admin/compat grant -- carcass-*, drycarcass-*, fishraw-*, flour-*, bone-*, bonemeal, resin*, salt, saltpeter; (3) patterns that can never match because the item computes nutrition from its live contents at runtime, not static nutritionProps -- bowl-*-meal, pie-*. Kinds (2) and (3) show up as zero-match patterns in extract.py's report -- see DEAD_PATTERN_NOTES there for the per-pattern triage; do not delete them on the strength of a zero match alone. The state axis has no fallback default: a missing state tag is a legitimate value, not a gap. About 101 vanilla foods (fungus, fresh fruit, insect, seed, most leaf/root/dairy) have no meaningful raw/cooked/preserved/spoiled distinction and are correctly left state-less.",
   "source": {
     "meat": ["game:redmeat-*", "game:bushmeat-*", "game:poultry-*", "game:pemmican-*"],
-    "organ": [],
+    "organ": ["game:fat", "game:fat-rendered"],
     "blood": [],
     "carrion": ["game:carcass-*", "game:drycarcass-*"],
-    "fish": ["game:fish-*", "game:fishraw-*"],
+    "fish": ["game:fish-*", "game:fishraw-*", "game:fishchunk-*"],
     "insect": ["game:insect-*"],
     "egg": ["game:egg-*"],
-    "dairy": ["game:cheese-*", "game:milkportion*", "game:butter", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
+    "dairy": ["game:cheese-*", "game:milkportion*", "game:butter-*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
     "grain": ["game:bread-*", "game:flour-*", "game:grain-*"],
-    "root": ["game:vegetable-carrot*", "game:vegetable-turnip*", "game:vegetable-parsnip*", "game:vegetable-cassava*", "game:vegetable-cookedcattailroot*", "game:vegetable-cookedpapyrusroot*"],
-    "leaf": ["game:vegetable-cabbage*", "game:vegetable-fennel*"],
-    "fruit": ["game:fruit-*", "game:honeycomb", "game:vegetable-pumpkin*", "game:vegetable-bellpepper*", "game:vegetable-olive*"],
-    "seed": ["game:legume-*"],
-    "nut": ["game:treeseed-*-walnut"],
+    "root": ["game:vegetable-carrot*", "game:vegetable-turnip*", "game:vegetable-parsnip*", "game:vegetable-cassava*", "game:vegetable-cookedcattailroot*", "game:vegetable-cookedpapyrusroot*", "game:vegetable-onion", "game:pickledvegetable-carrot", "game:pickledvegetable-parsnip", "game:pickledvegetable-turnip", "game:pickledvegetable-onion"],
+    "leaf": ["game:vegetable-cabbage*", "game:vegetable-fennel*", "game:vegetable-bambooshoot", "game:pickledvegetable-cabbage", "game:pickledvegetable-fennel"],
+    "fruit": ["game:fruit-*", "game:honeycomb", "game:vegetable-pumpkin*", "game:vegetable-bellpepper*", "game:vegetable-olive*", "game:pickledvegetable-bellpepper", "game:pickledvegetable-pumpkin", "game:pickledvegetable-olive"],
+    "seed": ["game:legume-*", "game:pickledlegume-*"],
+    "nut": ["game:treeseed-walnut"],
     "fungus": ["game:mushroom-*"],
     "sap": [],
     "resin": ["game:resin*"],
@@ -22,9 +22,10 @@
     "mineral": ["game:salt", "game:saltpeter"]
   },
   "state": {
-    "raw": ["game:*-raw"],
-    "cooked": ["game:*-cooked", "game:*-perfect", "game:*-boiled"],
-    "preserved": ["game:*-cured", "game:*-smoked", "game:*-dried", "game:pickledvegetable-*", "game:pickledlegume-*"]
+    "raw": ["game:*-raw", "game:pemmican-raw-*"],
+    "cooked": ["game:*-cooked", "game:*-perfect", "game:*-boiled", "game:vegetable-cookedcattailroot", "game:vegetable-cookedpapyrusroot", "game:*-smoked"],
+    "preserved": ["game:*-cured", "game:*-smoked", "game:*-dried", "game:pickledvegetable-*", "game:pickledlegume-*", "game:pemmican-dried-*"],
+    "spoiled": ["game:*-charred"]
   },
   "form": {
     "whole": [],
