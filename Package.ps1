@@ -12,6 +12,64 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# Hashes entry name + entry bytes, not raw zip/file bytes -- mtime alone shouldn't trip this.
+# .dll/.pdb are excluded: verified empirically that dietsetup.dll is not byte-identical across
+# back-to-back builds of unchanged source (every asset was identical, only the dll differed), so
+# comparing it would false-positive on every legitimate rebuild. Source changes are already
+# tracked via git; this guard is about the shipped asset/config payload silently changing under an
+# unchanged version string, which is what actually broke before.
+#
+# Text files are also CRLF/LF-normalized before hashing: this repo runs core.autocrlf=true, so a
+# plain git checkout can flip a tracked JSON file's line endings with zero semantic change --
+# verified empirically that a revert-via-checkout alone was enough to trip an un-normalized version
+# of this guard on a build with no real content change.
+function Get-NormalizedBytes {
+    param([byte[]]$Bytes, [string]$Extension)
+    if ($Extension -in '.json', '.md', '.txt', '.fsh', '.vsh') {
+        $text = [System.Text.Encoding]::UTF8.GetString($Bytes) -replace "`r`n", "`n" -replace "`r", "`n"
+        return [System.Text.Encoding]::UTF8.GetBytes($text)
+    }
+    return $Bytes
+}
+
+function Get-StagedContentHash {
+    param([string]$StageRoot)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $lines = Get-ChildItem -Path $StageRoot -Recurse -File | Where-Object { $_.Extension -notin '.dll', '.pdb' } | ForEach-Object {
+        $rel = $_.FullName.Substring($StageRoot.Length).TrimStart('\','/').Replace('\','/')
+        $bytes = Get-NormalizedBytes -Bytes ([System.IO.File]::ReadAllBytes($_.FullName)) -Extension $_.Extension
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace('-', '')
+        "$rel`:$hash"
+    }
+    $joined = [System.Text.Encoding]::UTF8.GetBytes((($lines | Sort-Object) -join "`n"))
+    return [System.BitConverter]::ToString($sha256.ComputeHash($joined)).Replace('-', '')
+}
+
+function Get-ZipContentHash {
+    param([string]$ZipPath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $lines = $zip.Entries | Where-Object { $_.FullName -notmatch '\.(dll|pdb)$' } | ForEach-Object {
+            $stream = $_.Open()
+            $ms = New-Object System.IO.MemoryStream
+            $stream.CopyTo($ms)
+            $stream.Dispose()
+            $ext = [System.IO.Path]::GetExtension($_.FullName)
+            $bytes = Get-NormalizedBytes -Bytes ($ms.ToArray()) -Extension $ext
+            $hash = [System.BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace('-', '')
+            $ms.Dispose()
+            "$($_.FullName):$hash"
+        }
+    } finally {
+        $zip.Dispose()
+    }
+    $joined = [System.Text.Encoding]::UTF8.GetBytes((($lines | Sort-Object) -join "`n"))
+    return [System.BitConverter]::ToString($sha256.ComputeHash($joined)).Replace('-', '')
+}
+
 $repoRoot = (Split-Path -Parent $MyInvocation.MyCommand.Path).TrimEnd('\')
 $modInfoPath = Join-Path $repoRoot "modinfo.json"
 $modInfo = Get-Content $modInfoPath -Raw | ConvertFrom-Json
@@ -100,12 +158,22 @@ if ($Configuration -eq "Release") {
     if (-not (Test-Path $artifactsDir)) { New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null }
 
     $zipPath = Join-Path $artifactsDir "${modId}_${version}.zip"
-    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    if (Test-Path $zipPath) {
+        # A same-named zip with different content means this version string was reused across two
+        # different builds (happened once already: an artifacts/ zip got silently replaced by a
+        # differently-built same-named zip). Refuse instead of overwriting -- forces a version bump.
+        $existingHash = Get-ZipContentHash -ZipPath $zipPath
+        $newHash = Get-StagedContentHash -StageRoot $stageDir
+        if ($existingHash -ne $newHash) {
+            Write-Error "[$modId] Refusing to overwrite ${zipPath}: its content ($existingHash) does not match this build ($newHash). Bump the version in modinfo.json instead of repackaging a different build under the same version string."
+            exit 1
+        }
+        Remove-Item $zipPath -Force
+    }
 
     # Compress-Archive under Windows PowerShell 5.1 writes \ as the entry separator, which Linux
     # treats as a literal filename character -- the game's asset VFS then finds nothing under
     # assets/<domain>/... Writing entries by hand keeps the separator explicit.
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
     Get-ChildItem -Path $stageDir -Recurse -File | ForEach-Object {
         $rel = $_.FullName.Substring($stageDir.Length).TrimStart('\','/').Replace('\','/')
