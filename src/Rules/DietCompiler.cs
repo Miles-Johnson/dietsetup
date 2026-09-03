@@ -71,7 +71,7 @@ public static class DietCompiler
         {
             if (!Enum.TryParse(name, true, out EnumFoodCategory cat) || !AllCategories.Contains(cat))
             {
-                // Not one of the 13 numbered rules -- an unrecognized category name is a malformed
+                // Not one of the 15 numbered rules -- an unrecognized category name is a malformed
                 // document, not a scope collision, but must still refuse rather than silently drop it.
                 fatal.Add(new DietValidationMessage(0, $"categories block names unknown category '{name}'"));
                 continue;
@@ -171,7 +171,7 @@ public static class DietCompiler
         string v = verdict ?? "edible";
         if (Enum.TryParse(v, true, out DietVerdict parsed)) return parsed;
 
-        // Not one of the 13 numbered rules -- same reasoning as the unknown-category check above.
+        // Not one of the 15 numbered rules -- same reasoning as the unknown-category check above.
         fatal.Add(new DietValidationMessage(0, $"rule '{ruleLabel}': unknown verdict '{v}'"));
         return DietVerdict.Edible;
     }
@@ -213,7 +213,7 @@ public static class DietCompiler
             {
                 if (!Enum.TryParse(ef.Verdict ?? "", true, out DietVerdict parsedVerdict))
                 {
-                    // Not one of the 13 numbered rules -- the effect type itself parsed fine (rule 7
+                    // Not one of the 15 numbered rules -- the effect type itself parsed fine (rule 7
                     // is about the type string), this is its value being malformed.
                     fatal.Add(new DietValidationMessage(0, $"rule '{ruleLabel}': verdict effect has unknown verdict '{ef.Verdict}'"));
                     continue;
@@ -247,7 +247,7 @@ public static class DietCompiler
             {
                 if (!Enum.TryParse(ef.Mode, true, out DietDamageMode parsedMode))
                 {
-                    // Not one of the 13 numbered rules -- same reasoning as the unknown-verdict check
+                    // Not one of the 15 numbered rules -- same reasoning as the unknown-verdict check
                     // above: the effect type parsed fine (rule 7), its mode value didn't.
                     fatal.Add(new DietValidationMessage(0, $"rule '{ruleLabel}': damage effect has missing or unknown mode '{ef.Mode}' (must be 'instant' or 'overTime')"));
                     continue;
