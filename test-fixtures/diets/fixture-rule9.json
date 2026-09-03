@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-rule9",
+  "rules": [
+    {
+      "requires": [],
+      "effects": [
+        { "type": "satietyMult" },
+        { "type": "satietyMult" }
+      ]
+    }
+  ]
+}

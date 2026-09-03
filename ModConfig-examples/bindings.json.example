@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "bindings": {
+    "rf-orc-positive": "orc",
+    "rf-dwarf-positive": "dwarf",
+    "rf-goblin-positive": "goblin",
+    "rf-elf-positive": "elf",
+    "rf-human-positive": "human"
+  },
+  "default": "base"
+}

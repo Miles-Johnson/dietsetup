@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "task7-effects-form",
+
+  "categories": {
+    "Fruit":     { "capacity": 1.0 },
+    "Vegetable": { "capacity": 1.0 },
+    "Grain":     { "capacity": 1.0 },
+    "Protein":   { "capacity": 1.0 },
+    "Dairy":     { "capacity": 1.0 }
+  },
+
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+
+  "rules": [
+    {
+      "requires": ["meat", "raw"],
+      "priority": 10,
+      "effects": [
+        { "type": "satietyMult", "amount": 1.0 },
+        { "type": "nutritionMult", "amount": 0.3 },
+        { "type": "verdict", "verdict": "harmful" }
+      ]
+    }
+  ]
+}

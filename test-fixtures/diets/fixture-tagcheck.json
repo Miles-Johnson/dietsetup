@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-tagcheck",
+  "rules": [
+    {
+      "requires": ["meat"],
+      "verdict": "edible",
+      "satietyMult": 0.5,
+      "nutritionMult": 1.0
+    }
+  ]
+}

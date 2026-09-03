@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-tagcheck-spoiled",
+  "rules": [
+    {
+      "requires": ["meat", "spoiled"],
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    }
+  ]
+}

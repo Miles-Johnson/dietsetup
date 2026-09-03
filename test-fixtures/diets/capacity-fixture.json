@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "capacity-fixture",
+
+  "categories": {
+    "Protein":   { "capacity": 1.0 },
+    "Grain":     { "capacity": 0.2 },
+    "Fruit":     { "capacity": 0.0 },
+    "Vegetable": { "capacity": 1.0 },
+    "Dairy":     { "capacity": 1.0 }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "source": {
+    "meat": ["game:redmeat-*", "game:bushmeat-*"]
+  }
+}

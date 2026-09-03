@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "task7-damage",
+
+  "categories": {
+    "Fruit":     { "capacity": 1.0 },
+    "Vegetable": { "capacity": 1.0 },
+    "Grain":     { "capacity": 1.0 },
+    "Protein":   { "capacity": 1.0 },
+    "Dairy":     { "capacity": 1.0 }
+  },
+
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+
+  "rules": [
+    {
+      "requires": ["meat"],
+      "priority": 10,
+      "verdict": "edible",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0,
+      "effects": [
+        { "type": "damage", "mode": "instant", "amount": -2.0 },
+        { "type": "custom", "key": "dietsetup:debuglog" }
+      ]
+    }
+  ]
+}

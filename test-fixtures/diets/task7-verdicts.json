@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "task7-verdicts",
+
+  "categories": {
+    "Fruit":     { "capacity": 1.0 },
+    "Vegetable": { "capacity": 1.0 },
+    "Grain":     { "capacity": 1.0 },
+    "Protein":   { "capacity": 1.0 },
+    "Dairy":     { "capacity": 1.0 }
+  },
+
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+
+  "rules": [
+    { "requires": ["dairy"], "priority": 10, "verdict": "harmful",    "satietyMult": 1.0, "nutritionMult": 1.0 },
+    { "requires": ["grain"], "priority": 10, "verdict": "nourishing", "satietyMult": 1.0, "nutritionMult": 1.0 }
+  ]
+}

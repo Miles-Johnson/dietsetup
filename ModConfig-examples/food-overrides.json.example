@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "grants": [
+    { "pattern": "game:redmeat-raw", "category": "Protein", "baseSatiety": 100 }
+  ]
+}
