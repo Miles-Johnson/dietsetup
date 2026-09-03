@@ -5,18 +5,79 @@
   "categories": {
     "Fruit": { "capacity": 0.0 },
     "Vegetable": { "capacity": 0.0 },
-    "Grain": { "capacity": 0.2 },
-    "Protein": { "capacity": 1.2 },
-    "Dairy": { "capacity": 0.8 }
+    "Grain": { "capacity": 0.4 },
+    "Protein": { "capacity": 1.4 },
+    "Dairy": { "capacity": 1.24 }
   },
   "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
   "rules": [
     {
+      "requires": ["meat", "cooked"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    },
+    {
       "requires": ["meat", "raw"],
-      "priority": 10,
-      "verdict": "edible",
+      "priority": 30,
       "satietyMult": 1.0,
       "nutritionMult": 0.4
+    },
+    {
+      "requires": ["organ"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.2
+    },
+    {
+      "requires": ["fish"],
+      "priority": 20,
+      "satietyMult": 1.0,
+      "nutritionMult": 0.7
+    },
+    {
+      "requires": ["insect"],
+      "priority": 20,
+      "satietyMult": 1.0,
+      "nutritionMult": 0.7
+    },
+    {
+      "requires": ["seed"],
+      "priority": 20,
+      "satietyMult": 0.25,
+      "nutritionMult": 0.2
+    },
+    {
+      "requires": ["nut"],
+      "priority": 20,
+      "satietyMult": 0.25,
+      "nutritionMult": 0.2
+    },
+    {
+      "requires": ["fruit"],
+      "priority": 5,
+      "satietyMult": 0.25,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["leaf"],
+      "priority": 5,
+      "satietyMult": 0.25,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["root"],
+      "priority": 5,
+      "satietyMult": 0.25,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["fungus"],
+      "priority": 5,
+      "satietyMult": 0.25,
+      "nutritionMult": 1.0
     }
   ]
 }

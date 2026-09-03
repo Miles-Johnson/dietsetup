@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "goblin",
+  "extends": "base",
+  "categories": {
+    "Fruit": { "capacity": 1.0 },
+    "Vegetable": { "capacity": 1.0 },
+    "Grain": { "capacity": 0.4 },
+    "Protein": { "capacity": 1.32 },
+    "Dairy": { "capacity": 1.08 }
+  },
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+  "rules": [
+    {
+      "requires": ["rotten"],
+      "priority": 40,
+      "verdict": "nourishing",
+      "satietyMult": 1.75,
+      "nutritionMult": 1.5
+    },
+    {
+      "requires": ["spoiled"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.4,
+      "nutritionMult": 1.25
+    },
+    {
+      "requires": ["insect"],
+      "priority": 20,
+      "verdict": "nourishing",
+      "satietyMult": 1.2,
+      "nutritionMult": 1.5
+    },
+    {
+      "requires": ["organ"],
+      "priority": 20,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.2
+    },
+    {
+      "requires": ["meat", "raw"],
+      "priority": 20,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["fruit"],
+      "priority": 5,
+      "verdict": "harmful",
+      "satietyMult": 0.25,
+      "nutritionMult": 0.4
+    },
+    {
+      "requires": ["leaf"],
+      "priority": 5,
+      "verdict": "harmful",
+      "satietyMult": 0.25,
+      "nutritionMult": 0.4
+    },
+    {
+      "requires": ["root"],
+      "priority": 5,
+      "verdict": "harmful",
+      "satietyMult": 0.25,
+      "nutritionMult": 0.4
+    },
+    {
+      "requires": ["fungus"],
+      "priority": 5,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    }
+  ]
+}

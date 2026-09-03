@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "dwarf",
+  "extends": "base",
+  "categories": {
+    "Fruit": { "capacity": 0.6 },
+    "Vegetable": { "capacity": 0.8 },
+    "Grain": { "capacity": 1.08 },
+    "Protein": { "capacity": 1.32 },
+    "Dairy": { "capacity": 1.32 }
+  },
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+  "rules": [
+    {
+      "requires": ["fungus"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 2.5
+    },
+    {
+      "requires": ["root"],
+      "priority": 30,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.75
+    },
+    {
+      "requires": ["preserved"],
+      "priority": 25,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.5
+    },
+    {
+      "requires": ["grain", "cooked"],
+      "priority": 20,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.33
+    }
+  ]
+}

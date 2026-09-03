@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "elf",
+  "extends": "base",
+  "categories": {
+    "Fruit": { "capacity": 1.4 },
+    "Vegetable": { "capacity": 1.24 },
+    "Grain": { "capacity": 0.6 },
+    "Protein": { "capacity": 0.8 },
+    "Dairy": { "capacity": 0.0 }
+  },
+  "fallback": { "satietyMult": 1.0, "nutritionMult": 1.0 },
+  "rules": [
+    {
+      "requires": ["meat"],
+      "priority": 40,
+      "verdict": "inedible"
+    },
+    {
+      "requires": ["organ"],
+      "priority": 40,
+      "verdict": "inedible"
+    },
+    {
+      "requires": ["seed"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.75
+    },
+    {
+      "requires": ["nut"],
+      "priority": 30,
+      "verdict": "nourishing",
+      "satietyMult": 1.0,
+      "nutritionMult": 1.75
+    },
+    {
+      "requires": ["fish"],
+      "priority": 30,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["preserved"],
+      "priority": 25,
+      "verdict": "harmful",
+      "satietyMult": 0.75,
+      "nutritionMult": 0.6
+    },
+    {
+      "requires": ["spoiled"],
+      "priority": 25,
+      "verdict": "harmful",
+      "satietyMult": 0.5,
+      "nutritionMult": 0.25
+    },
+    {
+      "requires": ["fresh"],
+      "priority": 10,
+      "verdict": "nourishing",
+      "satietyMult": 1.25,
+      "nutritionMult": 1.25
+    }
+  ]
+}
