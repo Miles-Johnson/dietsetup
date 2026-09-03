@@ -8,7 +8,7 @@
     "fish": ["game:fish-*", "game:fishraw-*", "game:fishchunk-*"],
     "insect": ["game:insect-*"],
     "egg": ["game:egg-*"],
-    "dairy": ["game:cheese-*", "game:milkportion*", "game:butter-*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
+    "dairy": ["game:cheese-*", "game:milkportion*", "game:butter-*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*", "game:cottagecheeseportion"],
     "grain": ["game:bread-*", "game:flour-*", "game:grain-*"],
     "root": ["game:vegetable-carrot*", "game:vegetable-turnip*", "game:vegetable-parsnip*", "game:vegetable-cassava*", "game:vegetable-cookedcattailroot*", "game:vegetable-cookedpapyrusroot*", "game:vegetable-onion", "game:pickledvegetable-carrot", "game:pickledvegetable-parsnip", "game:pickledvegetable-turnip", "game:pickledvegetable-onion"],
     "leaf": ["game:vegetable-cabbage*", "game:vegetable-fennel*", "game:vegetable-bambooshoot", "game:pickledvegetable-cabbage", "game:pickledvegetable-fennel"],
@@ -19,7 +19,11 @@
     "sap": [],
     "resin": ["game:resin*"],
     "bone": ["game:bone-*", "game:bonemeal"],
-    "mineral": ["game:salt", "game:saltpeter"]
+    "mineral": ["game:salt", "game:saltpeter"],
+    "alcohol": ["game:alcoholportion", "game:spiritportion-*", "game:ciderportion-*"],
+    "honey": ["game:honeyportion", "game:jamhoneyportion"],
+    "juice": ["game:juiceportion-*"],
+    "vinegar": ["game:vinegarportion"]
   },
   "state": {
     "raw": ["game:*-raw", "game:pemmican-raw-*"],
@@ -30,7 +34,7 @@
   "form": {
     "whole": [],
     "ground": ["game:flour-*", "game:bonemeal"],
-    "liquid": ["game:milkportion*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*"],
+    "liquid": ["game:milkportion*", "game:curdportion*", "game:curdledmilkportion*", "game:wheycurdportion*", "game:cottagecheeseportion", "game:alcoholportion", "game:spiritportion-*", "game:ciderportion-*", "game:honeyportion", "game:jamhoneyportion", "game:juiceportion-*", "game:vinegarportion"],
     "meal": ["game:bowl-*-meal", "game:pie-*"]
   }
 }
