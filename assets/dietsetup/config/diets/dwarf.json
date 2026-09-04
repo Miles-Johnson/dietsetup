@@ -32,17 +32,29 @@
       "nutritionMult": 1.5
     },
     {
+      "requires": ["leaf"],
+      "priority": 20,
+      "satietyMult": 0.5,
+      "nutritionMult": 1.0
+    },
+    {
+      "requires": ["fruit"],
+      "priority": 20,
+      "satietyMult": 0.5,
+      "nutritionMult": 1.0
+    },
+    {
       "requires": ["grain", "cooked"],
       "priority": 20,
       "satietyMult": 1.0,
       "nutritionMult": 1.33
     },
     {
-  "requires": ["meat", "raw"],
-  "priority": 30,
-  "satietyMult": 0.5,
-  "nutritionMult": 0.15
-   },
+      "requires": ["meat", "raw"],
+      "priority": 30,
+      "satietyMult": 0.5,
+      "nutritionMult": 0.15
+    },
     {
       "requires": ["alcohol"],
       "priority": 25,
