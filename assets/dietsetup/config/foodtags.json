@@ -12,7 +12,7 @@
     "grain": ["game:bread-*", "game:flour-*", "game:grain-*"],
     "root": ["game:vegetable-carrot*", "game:vegetable-turnip*", "game:vegetable-parsnip*", "game:vegetable-cassava*", "game:vegetable-cookedcattailroot*", "game:vegetable-cookedpapyrusroot*", "game:vegetable-onion", "game:pickledvegetable-carrot", "game:pickledvegetable-parsnip", "game:pickledvegetable-turnip", "game:pickledvegetable-onion"],
     "leaf": ["game:vegetable-cabbage*", "game:vegetable-fennel*", "game:vegetable-bambooshoot", "game:pickledvegetable-cabbage", "game:pickledvegetable-fennel"],
-    "fruit": ["game:fruit-*", "game:honeycomb", "game:vegetable-pumpkin*", "game:vegetable-bellpepper*", "game:vegetable-olive*", "game:pickledvegetable-bellpepper", "game:pickledvegetable-pumpkin", "game:pickledvegetable-olive"],
+    "fruit": ["game:fruit-*", "game:honeycomb", "game:vegetable-pumpkin*", "game:vegetable-bellpepper*", "game:vegetable-olive*", "game:pickledvegetable-bellpepper", "game:pickledvegetable-pumpkin", "game:pickledvegetable-olive", "game:juiceportion-*"],
     "seed": ["game:legume-*", "game:pickledlegume-*"],
     "nut": ["game:treeseed-walnut"],
     "fungus": ["game:mushroom-*"],
