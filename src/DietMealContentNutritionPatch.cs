@@ -58,6 +58,18 @@ public static class DietMealContentNutritionPatch
         if (contentStacks != null && bowlStack != null)
         {
             bool timeFrozen = bowlStack.Attributes.GetBool("timeFrozen");
+
+            // BlockPie's fillings are held permanently fresh (UnspoilContents) and keep whatever
+            // raw/cooked code they had going in, so their own state axis is meaningless here -- the
+            // pie's own age is read once and threaded per-filling via DietSpoilageResolution's
+            // ambient context (Q1/Q6 of the 2026-09-04 notes entry).
+            bool bowlIsPie = bowlStack.Collectible is BlockPie;
+            float pieSpoilLevel = 0f;
+            if (bowlIsPie && !timeFrozen)
+            {
+                pieSpoilLevel = bowlStack.Collectible.UpdateAndGetTransitionState(world, inSlot, EnumTransitionType.Perish)?.TransitionLevel ?? 0f;
+            }
+
             string recipeCode = bowlStack.Attributes.GetString("recipeCode");
             List<CookingRecipeIngredient>? recipeIngredients = world.Api.GetCookingRecipe(recipeCode)?.Ingredients?
                 .Select(ing => ing.Clone()).ToList();
@@ -115,8 +127,18 @@ public static class DietMealContentNutritionPatch
                 // resolved satiety/health multiplier whenever a rule matched -- including the
                 // Inedible zero override -- so these locals carry either vanilla's spoilage curve
                 // (no rule matched) or the diet's resolve (one did), never both combined.
-                float ingredientSatietyMult = GlobalConstants.FoodSpoilageSatLossMul(spoilState, contentStack, forEntity);
-                float ingredientHealthMult = GlobalConstants.FoodSpoilageHealthLossMul(spoilState, contentStack, forEntity);
+                float ingredientSatietyMult;
+                float ingredientHealthMult;
+                if (bowlIsPie) DietSpoilageResolution.SetPieFillingContext(bowlStack, pieSpoilLevel);
+                try
+                {
+                    ingredientSatietyMult = GlobalConstants.FoodSpoilageSatLossMul(spoilState, contentStack, forEntity);
+                    ingredientHealthMult = GlobalConstants.FoodSpoilageHealthLossMul(spoilState, contentStack, forEntity);
+                }
+                finally
+                {
+                    if (bowlIsPie) DietSpoilageResolution.ClearPieFillingContext();
+                }
                 props.Satiety *= ingredientSatietyMult * nutritionMul * quantity;
                 props.Health *= ingredientHealthMult * healthMul * quantity;
                 props.Intoxication *= quantity;

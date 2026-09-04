@@ -31,6 +31,7 @@ public static class FoodTagRegistry
     private static ulong[] itemMasks = Array.Empty<ulong>();
     private static ulong[] blockMasks = Array.Empty<ulong>();
     private static ulong sourceAxisMask;
+    private static ulong stateAxisMask;
 
     // Global source-tag -> vanilla nutrient bar mapping (spec section 2). Fixed, not
     // per-diet and not compat-pack-extensible in v1 -- a third-party source tag with no
@@ -82,6 +83,7 @@ public static class FoodTagRegistry
         tagAxis.Clear();
         tagPatterns.Clear();
         sourceAxisMask = 0;
+        stateAxisMask = 0;
 
         EnsureBit(FreshTag, FoodTagAxis.State);
         EnsureBit(SpoiledTag, FoodTagAxis.State);
@@ -169,6 +171,10 @@ public static class FoodTagRegistry
         if (axis == FoodTagAxis.Source)
         {
             sourceAxisMask |= 1UL << bit;
+        }
+        else if (axis == FoodTagAxis.State)
+        {
+            stateAxisMask |= 1UL << bit;
         }
         return bit;
     }
@@ -259,6 +265,24 @@ public static class FoodTagRegistry
         if (!IsRelevant(mask, collectible)) return mask;
 
         mask |= 1UL << tagBits[spoilLevel > 0f ? SpoiledTag : FreshTag];
+        return mask;
+    }
+
+    /// <summary>Source+form bits from the filling, state bits (raw/cooked/preserved/rotten and
+    /// fresh/spoiled) from the pie. A pie is a sealed unit: baking sterilizes every filling and the
+    /// pie ages as one thing from there, so a filling's own state -- permanently fresh
+    /// (BlockPie.UnspoilContents) and still code-tagged with whatever raw/cooked suffix it had
+    /// going in -- is the wrong read. Only ever called with a live pieSpoilLevel from the pie's own
+    /// stack; never touches the filling's own numeric spoilState, which stays the sole input to
+    /// GlobalConstants.FoodSpoilageSatLossMul's vanilla curve.</summary>
+    public static ulong GetPieFillingTagMask(CollectibleObject fillingCollectible, CollectibleObject pieCollectible, float pieSpoilLevel)
+    {
+        ulong fillingMask = GetStaticMask(fillingCollectible);
+        if (!IsRelevant(fillingMask, fillingCollectible)) return fillingMask;
+
+        ulong pieMask = GetStaticMask(pieCollectible);
+        ulong mask = (fillingMask & ~stateAxisMask) | (pieMask & stateAxisMask);
+        mask |= 1UL << tagBits[pieSpoilLevel > 0f ? SpoiledTag : FreshTag];
         return mask;
     }
 

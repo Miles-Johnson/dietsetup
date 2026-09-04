@@ -48,6 +48,30 @@ internal static class DietSpoilageResolution
     private static DietResolveResult cachedResult;
     private static bool cacheValid;
 
+    // [ThreadStatic], same reasoning as DietMealFactsContext.DisplayOnly: client and server share a
+    // process in singleplayer, so a plain static here could let a client-side tooltip read observe
+    // or clobber a concurrent server-side real eat's pie context.
+    [ThreadStatic]
+    private static ItemStack? pieFillingPieStack;
+    [ThreadStatic]
+    private static float pieFillingPieSpoilLevel;
+
+    /// <summary>Set only by DietMealContentNutritionPatch's per-filling loop around its BlockPie
+    /// fillings -- while set, TryResolveSatietyMultiplier reads the filling's state axis off this
+    /// pie instead of the filling itself (FoodTagRegistry.GetPieFillingTagMask). Unset (the default)
+    /// for every other caller, including BlockPie.cs:442's own pie-level resolve, which keeps
+    /// resolving against the pie's own mask exactly as before.</summary>
+    public static void SetPieFillingContext(ItemStack pieStack, float pieSpoilLevel)
+    {
+        pieFillingPieStack = pieStack;
+        pieFillingPieSpoilLevel = pieSpoilLevel;
+    }
+
+    public static void ClearPieFillingContext()
+    {
+        pieFillingPieStack = null;
+    }
+
     public static bool TryResolveSatietyMultiplier(float spoilState, ItemStack? stack, EntityAgent? byEntity, out float satietyMult)
     {
         satietyMult = 0f;
@@ -68,7 +92,9 @@ internal static class DietSpoilageResolution
                 return false;
             }
 
-            ulong tagMask = FoodTagRegistry.GetTagMaskForSpoilState(stack.Collectible, spoilState);
+            ulong tagMask = pieFillingPieStack != null
+                ? FoodTagRegistry.GetPieFillingTagMask(stack.Collectible, pieFillingPieStack.Collectible, pieFillingPieSpoilLevel)
+                : FoodTagRegistry.GetTagMaskForSpoilState(stack.Collectible, spoilState);
             resolved = DietResolver.Resolve(diet, tagMask, spoilState);
 
             cachedStack = stack;
