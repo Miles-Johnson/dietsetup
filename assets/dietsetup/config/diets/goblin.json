@@ -19,6 +19,12 @@
       "nutritionMult": 1.5
     },
     {
+      "requires": ["meat"],
+      "priority": 35,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
+    },
+    {
       "requires": ["spoiled"],
       "priority": 30,
       "verdict": "nourishing",
