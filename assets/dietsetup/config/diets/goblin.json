@@ -22,7 +22,12 @@
       "requires": ["spoiled"],
       "priority": 30,
       "verdict": "nourishing",
-      "satietyMult": 1.4,
+      "satietyCurve": [
+        { "spoil": 0.0, "value": 0.7 },
+        { "spoil": 0.3, "value": 1.0 },
+        { "spoil": 0.85, "value": 1.45 },
+        { "spoil": 1.0, "value": 1.75 }
+      ],
       "nutritionMult": 1.25
     },
     {
@@ -70,6 +75,11 @@
       "priority": 5,
       "satietyMult": 1.0,
       "nutritionMult": 1.0
+    },
+    {
+      "requires": ["fresh"],
+      "priority": 4,
+      "satietyMult": 0.7
     }
   ]
 }
