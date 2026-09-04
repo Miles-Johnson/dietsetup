@@ -27,7 +27,7 @@
   },
   "state": {
     "raw": ["game:*-raw", "game:pemmican-raw-*"],
-    "cooked": ["game:*-cooked", "game:*-perfect", "game:*-boiled", "game:vegetable-cookedcattailroot", "game:vegetable-cookedpapyrusroot", "game:*-smoked"],
+    "cooked": ["game:*-cooked", "game:*-perfect", "game:*-boiled", "game:vegetable-cookedcattailroot", "game:vegetable-cookedpapyrusroot", "game:*-smoked", "game:pie-partbaked", "game:pie-charred"],
     "preserved": ["game:*-cured", "game:*-smoked", "game:*-dried", "game:pickledvegetable-*", "game:pickledlegume-*", "game:pemmican-dried-*"],
     "rotten": ["game:rot"]
   },
