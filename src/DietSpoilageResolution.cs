@@ -40,12 +40,28 @@ namespace dietsetup;
 /// </summary>
 internal static class DietSpoilageResolution
 {
-    // Keyed on stack reference + spoilState (the exact values vanilla passes to both calls) rather
-    // than trusted blindly -- a caller that only ever invokes one of the two (unverified elsewhere in
-    // the game source) must still resolve fresh, not read a stale result from an unrelated call.
+    // Keyed on stack reference + spoilState + entity + ambient pie context (2026-09-04: widened
+    // after a live bug -- a pie filling's spoilState stays pinned near 0 by UnspoilContents and its
+    // ItemStack reference is stable for the pie's life, so the narrower (stack, spoilState) key let
+    // a stale result computed under one pieFillingPieStack/pieFillingPieSpoilLevel replay under a
+    // later, different one, silently skipping a rule that should now match. The same narrower key
+    // also dropped byEntity, so two different entities' diets could share one cached verdict. Both
+    // are folded into one key rather than fixed separately -- both are "this cache forgot something
+    // that changes the answer." [ThreadStatic] for the same reason as the context fields below:
+    // client and server share a process in singleplayer.
+    [ThreadStatic]
     private static ItemStack? cachedStack;
+    [ThreadStatic]
     private static float cachedSpoilState;
+    [ThreadStatic]
+    private static EntityAgent? cachedEntity;
+    [ThreadStatic]
+    private static ItemStack? cachedPieStack;
+    [ThreadStatic]
+    private static float cachedPieSpoilLevel;
+    [ThreadStatic]
     private static DietResolveResult cachedResult;
+    [ThreadStatic]
     private static bool cacheValid;
 
     // [ThreadStatic], same reasoning as DietMealFactsContext.DisplayOnly: client and server share a
@@ -55,6 +71,16 @@ internal static class DietSpoilageResolution
     private static ItemStack? pieFillingPieStack;
     [ThreadStatic]
     private static float pieFillingPieSpoilLevel;
+
+    // Shared by both cache readers so they can never drift onto different key shapes -- see the
+    // 2026-09-04 fix note above the cache fields.
+    private static bool CacheMatches(ItemStack? stack, float spoilState, EntityAgent? byEntity) =>
+        cacheValid
+        && ReferenceEquals(cachedStack, stack)
+        && cachedSpoilState == spoilState
+        && ReferenceEquals(cachedEntity, byEntity)
+        && ReferenceEquals(cachedPieStack, pieFillingPieStack)
+        && cachedPieSpoilLevel == pieFillingPieSpoilLevel;
 
     /// <summary>Set only by DietMealContentNutritionPatch's per-filling loop around its BlockPie
     /// fillings -- while set, TryResolveSatietyMultiplier reads the filling's state axis off this
@@ -79,7 +105,7 @@ internal static class DietSpoilageResolution
         if (stack?.Collectible == null) return false;
 
         DietResolveResult resolved;
-        if (cacheValid && ReferenceEquals(cachedStack, stack) && cachedSpoilState == spoilState)
+        if (CacheMatches(stack, spoilState, byEntity))
         {
             resolved = cachedResult;
         }
@@ -99,6 +125,9 @@ internal static class DietSpoilageResolution
 
             cachedStack = stack;
             cachedSpoilState = spoilState;
+            cachedEntity = byEntity;
+            cachedPieStack = pieFillingPieStack;
+            cachedPieSpoilLevel = pieFillingPieSpoilLevel;
             cachedResult = resolved;
             cacheValid = true;
         }
@@ -109,18 +138,21 @@ internal static class DietSpoilageResolution
         return true;
     }
 
-    /// <summary>Read-only peek at the cache TryResolveSatietyMultiplier just populated for
-    /// (stack, spoilState) -- used by DietMealContentNutritionPatch to pull the same resolve's
+    /// <summary>Read-only peek at the cache TryResolveSatietyMultiplier just populated for the same
+    /// key (see CacheMatches) -- used by DietMealContentNutritionPatch to pull the same resolve's
     /// Verdict and Effects immediately after its own FoodSpoilageSatLossMul call, instead of
     /// resolving a second time for the same ingredient. Unlike TryResolveSatietyMultiplier, not
     /// gated on Matched -- a caller here wants the full result (including an unmatched fallback's
     /// empty effects list), not just an override-worthy satiety multiplier.</summary>
-    public static bool TryGetLastResolved(ItemStack? stack, float spoilState, out DietResolveResult result)
+    public static bool TryGetLastResolved(ItemStack? stack, float spoilState, EntityAgent? byEntity, out DietResolveResult result)
     {
         // Not default(DietResolveResult): that zeroes Effects to null rather than calling the
         // constructor, an NRE waiting for any caller that reads result without checking the bool.
         result = new DietResolveResult(DietVerdict.Edible, 1f, 1f, Array.Empty<CompiledEffect>(), false);
-        if (!cacheValid || !ReferenceEquals(cachedStack, stack) || cachedSpoilState != spoilState) return false;
+        // Must be called while the caller's own pie context (if any) is still set -- CacheMatches
+        // compares against the *current* ambient pieFillingPieStack, so calling this after
+        // ClearPieFillingContext would never match a pie filling's own entry (2026-09-04).
+        if (!CacheMatches(stack, spoilState, byEntity)) return false;
 
         result = cachedResult;
         return true;

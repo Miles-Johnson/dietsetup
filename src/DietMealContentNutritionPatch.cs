@@ -129,11 +129,22 @@ public static class DietMealContentNutritionPatch
                 // (no rule matched) or the diet's resolve (one did), never both combined.
                 float ingredientSatietyMult;
                 float ingredientHealthMult;
+                DietResolveResult? ingredientResolved = null;
                 if (bowlIsPie) DietSpoilageResolution.SetPieFillingContext(bowlStack, pieSpoilLevel);
                 try
                 {
                     ingredientSatietyMult = GlobalConstants.FoodSpoilageSatLossMul(spoilState, contentStack, forEntity);
                     ingredientHealthMult = GlobalConstants.FoodSpoilageHealthLossMul(spoilState, contentStack, forEntity);
+
+                    // Peeks the resolve FoodSpoilageSatLossMul's own postfix (DietSpoilageSatietyPatch)
+                    // just cached for this exact key -- the same fold that set ingredientSatietyMult
+                    // above, not a second resolve for this ingredient. Must run before the pie context
+                    // is cleared below: the cache key now includes the ambient pie context, so peeking
+                    // after clearing it would never match a pie filling's own entry (2026-09-04).
+                    if (DietSpoilageResolution.TryGetLastResolved(contentStack, spoilState, forEntity, out DietResolveResult resolved))
+                    {
+                        ingredientResolved = resolved;
+                    }
                 }
                 finally
                 {
@@ -145,12 +156,9 @@ public static class DietMealContentNutritionPatch
                 props.Psychedelic *= quantity;
                 list.Add(props);
 
-                // Peeks the resolve FoodSpoilageSatLossMul's own postfix (DietSpoilageSatietyPatch)
-                // just cached for this exact (contentStack, spoilState) pair -- the same fold that
-                // set ingredientSatietyMult above, not a second resolve for this ingredient.
-                if (DietSpoilageResolution.TryGetLastResolved(contentStack, spoilState, out DietResolveResult ingredientResolved))
+                if (ingredientResolved.HasValue)
                 {
-                    mealEffects.Add(ingredientResolved);
+                    mealEffects.Add(ingredientResolved.Value);
                 }
             }
         }
