@@ -7,9 +7,9 @@ namespace dietsetup.Rules;
 /// (5.3) -- a Harmony patch contains all three steps and no logic of its own.</summary>
 public static class DietResolver
 {
-    // spoilLevel is part of the architecture-mandated signature (5.1) but this schema version has
-    // no curve or spoil-sensitive field to evaluate it against -- reserved for a later effect
-    // (7.3's rot accumulator). Unused on purpose, not a bug.
+    // spoilLevel now drives CompiledValue.Evaluate for the winning (or fallback) rule's
+    // satiety/nutrition -- restored 2026-09-04, the effect this parameter was reserved for
+    // when curve capability was removed from the schema at ee2f142.
     public static DietResolveResult Resolve(CompiledDiet diet, ulong tagMask, float spoilLevel)
     {
         CompiledRule[] rules = diet.Rules;
@@ -18,23 +18,20 @@ public static class DietResolver
             if (rules[i].Matches(tagMask))
             {
                 CompiledRule winner = rules[i];
-                return Apply(winner.Verdict, winner.SatietyMult, winner.NutritionMult, winner.Effects, matched: true);
+                return Apply(winner.Verdict, winner.SatietyMult, winner.NutritionMult, spoilLevel, winner.Effects, matched: true);
             }
         }
 
-        return Apply(DietVerdict.Edible, diet.FallbackSatietyMult, diet.FallbackNutritionMult, Array.Empty<CompiledEffect>(), matched: false);
+        return Apply(DietVerdict.Edible, CompiledValue.Flat(diet.FallbackSatietyMult), CompiledValue.Flat(diet.FallbackNutritionMult), spoilLevel, Array.Empty<CompiledEffect>(), matched: false);
     }
 
-    // Architecture 5.2 steps 4-5: apply the winner's multipliers to the neutral (1.0) baseline,
-    // then clamp both at 0. The only two multiply sites in the mod -- see the standing rule at
-    // architecture 5.4 that anything else touching satiety/nutrition/health is a defect.
-    private static DietResolveResult Apply(DietVerdict verdict, float satietyMult, float nutritionMult, CompiledEffect[] effects, bool matched)
+    // Architecture 5.2 steps 4-5: evaluate the winner's satiety/nutrition (flat or curve) against
+    // spoilLevel, then clamp both at 0. The only two evaluate sites in the mod -- see the standing
+    // rule at architecture 5.4 that anything else touching satiety/nutrition/health is a defect.
+    private static DietResolveResult Apply(DietVerdict verdict, CompiledValue satietyValue, CompiledValue nutritionValue, float spoilLevel, CompiledEffect[] effects, bool matched)
     {
-        float satiety = 1f;
-        satiety *= satietyMult;
-
-        float nutrition = 1f;
-        nutrition *= nutritionMult;
+        float satiety = satietyValue.Evaluate(spoilLevel);
+        float nutrition = nutritionValue.Evaluate(spoilLevel);
 
         // Architecture 7.5: Inedible contributes zero regardless of the rule's authored
         // multipliers -- a reaction-axis verdict, not a second place to author the same number.

@@ -127,26 +127,57 @@ public static class DietCompiler
         if (!requiresOk || !excludesOk) return null;
 
         DietVerdict verdict = ParseVerdict(label, rf.Verdict, fatal);
+
+        bool satietyIsCurve = rf.SatietyCurve is { Length: > 0 };
+        bool nutritionIsCurve = rf.NutritionCurve is { Length: > 0 };
+
+        // Rule 16: a rule that authors both a flat multiplier and a curve for the same field
+        // must refuse to load, not silently prefer the curve -- the pre-ee2f142 CompiledValue
+        // schema documented "never both" without enforcing it.
+        if (satietyIsCurve && rf.SatietyMult.HasValue)
+        {
+            fatal.Add(new DietValidationMessage(16, $"rule '{label}': sets both 'satietyMult' and 'satietyCurve' -- author one, not both"));
+        }
+        if (nutritionIsCurve && rf.NutritionMult.HasValue)
+        {
+            fatal.Add(new DietValidationMessage(16, $"rule '{label}': sets both 'nutritionMult' and 'nutritionCurve' -- author one, not both"));
+        }
+
         float satietyMult = rf.SatietyMult ?? 1f;
         float nutritionMult = rf.NutritionMult ?? 1f;
 
         // Architecture 7.1: satietyMult/nutritionMult/verdict are one authoring path with two
         // spellings (the top-level field here, or an effects-list entry below) -- both must reach
-        // the same CompiledRule field DietResolver.Apply already multiplies exactly once, not a
+        // the same CompiledRule field DietResolver.Apply already evaluates exactly once, not a
         // second one. Seeding rule 9's collision set with whichever top-level fields were
-        // explicitly authored means writing both spellings for the same field is caught the same
-        // way as writing it twice within the effects list.
+        // explicitly authored (flat or curve) means writing both spellings for the same field is
+        // caught the same way as writing it twice within the effects list.
         var writtenFields = new HashSet<string>();
-        if (rf.SatietyMult.HasValue) writtenFields.Add("Satiety");
-        if (rf.NutritionMult.HasValue) writtenFields.Add("Nutrition");
+        if (rf.SatietyMult.HasValue || satietyIsCurve) writtenFields.Add("Satiety");
+        if (rf.NutritionMult.HasValue || nutritionIsCurve) writtenFields.Add("Nutrition");
         if (rf.Verdict != null) writtenFields.Add("Verdict");
 
         CompiledEffect[] effects = CompileEffects(label, rf.Effects, writtenFields, fatal, warnings,
             ref satietyMult, ref nutritionMult, ref verdict);
 
+        CompiledValue satiety = satietyIsCurve ? CompiledValue.FromCurve(SortAnchors(rf.SatietyCurve!)) : CompiledValue.Flat(satietyMult);
+        CompiledValue nutrition = nutritionIsCurve ? CompiledValue.FromCurve(SortAnchors(rf.NutritionCurve!)) : CompiledValue.Flat(nutritionMult);
+
         return new CompiledRule(
             requiresMask, excludesMask, BitOperations.PopCount(requiresMask), rf.Priority ?? 0,
-            verdict, satietyMult, nutritionMult, effects, label);
+            verdict, satiety, nutrition, effects, label);
+    }
+
+    // FromCurve requires ascending order; authors write anchors in whatever order reads best.
+    private static CurveAnchor[] SortAnchors(CurveAnchorFile[] anchorsFile)
+    {
+        var anchors = new CurveAnchor[anchorsFile.Length];
+        for (int i = 0; i < anchorsFile.Length; i++)
+        {
+            anchors[i] = new CurveAnchor(anchorsFile[i].Spoil, anchorsFile[i].Value);
+        }
+        Array.Sort(anchors, (a, b) => a.Spoil.CompareTo(b.Spoil));
+        return anchors;
     }
 
     private static bool TryCompileMask(string ruleLabel, string[] tags, List<DietValidationMessage> fatal, out ulong mask)
@@ -313,7 +344,7 @@ public static class DietCompiler
         foreach ((EnumFoodCategory cat, CompiledCategory compiled) in categories)
         {
             if (compiled.Capacity <= 0f) continue;
-            if (rules.Any(r => r.NutritionMult > 0f && RuleCoversCategory(r, cat))) continue;
+            if (rules.Any(r => r.NutritionMult.CanBePositive && RuleCoversCategory(r, cat))) continue;
 
             warnings.Add(new DietValidationMessage(10, $"category '{cat}' has capacity {compiled.Capacity:F2} but no rule (and no fallback) can produce nutrition for it"));
         }

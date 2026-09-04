@@ -41,10 +41,23 @@ public class DietRuleFileEntry
     public string? Verdict { get; set; }
     public float? SatietyMult { get; set; }
     public float? NutritionMult { get; set; }
+
+    // Curve alternative to the flat fields above, evaluated against the resolve's spoil level
+    // (architecture 6.1 rule 16: authoring both the flat and curve form for one field is fatal,
+    // not curve-wins).
+    public CurveAnchorFile[]? SatietyCurve { get; set; }
+    public CurveAnchorFile[]? NutritionCurve { get; set; }
+
     public DietEffectFile[]? Effects { get; set; }
 
     // Wrong-scope field (validation rule 5) -- a rule must never set capacity.
     public float? Capacity { get; set; }
+}
+
+public class CurveAnchorFile
+{
+    public float Spoil { get; set; }
+    public float Value { get; set; }
 }
 
 /// <summary>One entry in rules[].effects (architecture 7.1/7.2). Fields are a union across every

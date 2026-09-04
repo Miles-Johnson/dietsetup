@@ -539,11 +539,16 @@ public class DietSetupModSystem : ModSystem
             // satietyMult/nutritionMult below are the authored values -- Inedible forces both to 0
             // at Resolve() regardless (architecture 7.5), so they're not what a real eat produces.
             string inedibleNote = r.Verdict == DietVerdict.Inedible ? " (Inedible: Resolve() forces satiety/nutrition to 0, not the values above)" : "";
-            sb.AppendLine($"    [{i}] priority={r.Priority} requires=[{requires}] excludes=[{excludes}] verdict={r.Verdict} satietyMult={r.SatietyMult:F2} nutritionMult={r.NutritionMult:F2}{inedibleNote}");
+            sb.AppendLine($"    [{i}] priority={r.Priority} requires=[{requires}] excludes=[{excludes}] verdict={r.Verdict} satietyMult={FormatValue(r.SatietyMult)} nutritionMult={FormatValue(r.NutritionMult)}{inedibleNote}");
         }
 
         return sb.ToString().TrimEnd();
     }
+
+    // A curve has no single value -- show its span (spoil=0 and spoil=1 endpoints) instead of
+    // one number, so a curved rule reads differently from a flat one at a glance.
+    private static string FormatValue(CompiledValue value) =>
+        value.IsCurve ? $"curve[{value.Evaluate(0f):F2}..{value.Evaluate(1f):F2}]" : $"{value.Evaluate(0f):F2}";
 
     /// <summary>Diagnostic: prints the caller's pending real-eat queues (DietProfileRegistry's
     /// nutrition-multiplier queue, MealIngredientNutritionHandoff's per-ingredient hand-off).
