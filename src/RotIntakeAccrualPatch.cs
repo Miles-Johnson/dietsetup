@@ -73,6 +73,8 @@ public static class RotIntakeStandaloneEatPatch
 /// tryEatStop). Averages TransitionLevel across the pot's contents since cooking pools freshness
 /// before it's stamped on stacks -- known, accepted limitation. Details:
 /// notes/dietsetup-patch-internals.md#rot-intake-meal--rotintakeaccrualpatchcs-rotintakemealeatpatch.
+/// BlockPie is the one exception: its fillings are held permanently fresh by UnspoilContents, so it
+/// accrues from the pie's own Perish level instead of averaging them (never fresh, so never zero).
 /// </summary>
 [HarmonyPatch(typeof(BlockMeal), "tryFinishEatMeal")]
 public static class RotIntakeMealEatPatch
@@ -83,6 +85,16 @@ public static class RotIntakeMealEatPatch
         if (!__result) return;
         if (byEntity is not EntityPlayer player) return;
         if (byEntity.World is not IServerWorldAccessor) return;
+
+        // A pie's own Perish clock, not its (permanently unspoiled) fillings' -- see
+        // notes/1.22-meal-pie-eat-trace.md's deferred entry for why averaging fillings here
+        // would always read fresh for a pie.
+        if (__instance is BlockPie)
+        {
+            TransitionState? pieState = slot.Itemstack?.Collectible.UpdateAndGetTransitionState(byEntity.World, slot, EnumTransitionType.Perish);
+            RotIntakeAccrual.AccrueRotIntake(player, pieState?.TransitionLevel ?? 0f);
+            return;
+        }
 
         ItemStack[] contents = __instance.GetNonEmptyContents(byEntity.World, slot.Itemstack);
         if (contents.Length == 0) return;
