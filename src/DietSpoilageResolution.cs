@@ -121,7 +121,11 @@ internal static class DietSpoilageResolution
             ulong tagMask = pieFillingPieStack != null
                 ? FoodTagRegistry.GetPieFillingTagMask(stack.Collectible, pieFillingPieStack.Collectible, pieFillingPieSpoilLevel)
                 : FoodTagRegistry.GetTagMaskForSpoilState(stack.Collectible, spoilState);
-            resolved = DietResolver.Resolve(diet, tagMask, spoilState);
+
+            // A pie filling's own spoilState is pinned near 0 by UnspoilContents (see class doc),
+            // so a spoil-keyed rule must evaluate against the pie's own age, not the filling's.
+            float dietSpoilLevel = pieFillingPieStack != null ? pieFillingPieSpoilLevel : spoilState;
+            resolved = DietResolver.Resolve(diet, tagMask, dietSpoilLevel);
 
             cachedStack = stack;
             cachedSpoilState = spoilState;
