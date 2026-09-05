@@ -67,10 +67,13 @@
       "nutritionMult": 1.2
     },
     {
+      // Fully shadowed by the "meat" rule above (priority 35 > 20) -- kept to document that raw
+      // meat is intentionally not penalized for goblins, not an authoring mistake.
       "requires": ["meat", "raw"],
       "priority": 20,
       "satietyMult": 1.0,
-      "nutritionMult": 1.0
+      "nutritionMult": 1.0,
+      "shadowedIntentionally": true
     },
     {
       "requires": ["fruit"],

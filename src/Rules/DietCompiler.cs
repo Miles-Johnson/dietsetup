@@ -165,7 +165,7 @@ public static class DietCompiler
 
         return new CompiledRule(
             requiresMask, excludesMask, BitOperations.PopCount(requiresMask), rf.Priority ?? 0,
-            verdict, satiety, nutrition, effects, label);
+            verdict, satiety, nutrition, effects, label, rf.ShadowedIntentionally ?? false);
     }
 
     // FromCurve requires ascending order; authors write anchors in whatever order reads best.
@@ -317,8 +317,10 @@ public static class DietCompiler
 
     // Rule 12 (warning): rule b is unreachable if some earlier rule a in win order matches
     // everything b would match (a's requires/excludes are a subset of b's).
+    // shadowedIntentionally is re-checked, not trusted, so a stale flag warns instead of hiding a regression.
     private static void CheckShadowedRules(string id, CompiledRule[] sorted, List<DietValidationMessage> warnings)
     {
+        bool[] actuallyShadowed = new bool[sorted.Length];
         for (int i = 0; i < sorted.Length; i++)
         {
             for (int j = i + 1; j < sorted.Length; j++)
@@ -329,8 +331,20 @@ public static class DietCompiler
                 bool excludesSubset = (a.ExcludesMask & ~b.ExcludesMask) == 0;
                 if (requiresSubset && excludesSubset)
                 {
-                    warnings.Add(new DietValidationMessage(12, $"rule '{b.DebugLabel}' is unreachable, fully shadowed by higher-priority rule '{a.DebugLabel}'"));
+                    actuallyShadowed[j] = true;
+                    if (!b.ShadowedIntentionally)
+                    {
+                        warnings.Add(new DietValidationMessage(12, $"rule '{b.DebugLabel}' is unreachable, fully shadowed by higher-priority rule '{a.DebugLabel}'"));
+                    }
                 }
+            }
+        }
+
+        for (int i = 0; i < sorted.Length; i++)
+        {
+            if (sorted[i].ShadowedIntentionally && !actuallyShadowed[i])
+            {
+                warnings.Add(new DietValidationMessage(12, $"rule '{sorted[i].DebugLabel}' is marked shadowedIntentionally but is not shadowed -- the flag is stale"));
             }
         }
     }

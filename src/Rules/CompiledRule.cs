@@ -13,8 +13,9 @@ public readonly struct CompiledRule
     public readonly CompiledValue NutritionMult;
     public readonly CompiledEffect[] Effects;
     public readonly string DebugLabel;
+    public readonly bool ShadowedIntentionally;
 
-    public CompiledRule(ulong requiresMask, ulong excludesMask, int specificity, int priority, DietVerdict verdict, CompiledValue satietyMult, CompiledValue nutritionMult, CompiledEffect[] effects, string debugLabel)
+    public CompiledRule(ulong requiresMask, ulong excludesMask, int specificity, int priority, DietVerdict verdict, CompiledValue satietyMult, CompiledValue nutritionMult, CompiledEffect[] effects, string debugLabel, bool shadowedIntentionally = false)
     {
         RequiresMask = requiresMask;
         ExcludesMask = excludesMask;
@@ -25,6 +26,7 @@ public readonly struct CompiledRule
         NutritionMult = nutritionMult;
         Effects = effects;
         DebugLabel = debugLabel;
+        ShadowedIntentionally = shadowedIntentionally;
     }
 
     public bool Matches(ulong tagMask) => (tagMask & RequiresMask) == RequiresMask && (tagMask & ExcludesMask) == 0;

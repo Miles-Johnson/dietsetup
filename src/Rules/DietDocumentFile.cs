@@ -52,6 +52,11 @@ public class DietRuleFileEntry
 
     // Wrong-scope field (validation rule 5) -- a rule must never set capacity.
     public float? Capacity { get; set; }
+
+    // Silences rule 12's shadowed-rule warning when true and still accurate; CheckShadowedRules
+    // re-verifies the shadowing each compile, so a rule that stops being shadowed gets a
+    // stale-flag warning instead of going silent forever.
+    public bool? ShadowedIntentionally { get; set; }
 }
 
 public class CurveAnchorFile
