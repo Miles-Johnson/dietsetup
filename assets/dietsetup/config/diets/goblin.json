@@ -21,13 +21,14 @@
     {
       "requires": ["meat"],
       "priority": 35,
-      "satietyCurve": [
-        { "spoil": 0.0, "value": 1.0 },
-        { "spoil": 0.3, "value": 1.0 },
-        { "spoil": 0.85, "value": 1.45 },
-        { "spoil": 1.0, "value": 1.75 }
-      ],
-      "nutritionMult": 1.0
+      "satietyMult": 1.0,
+      "nutritionCurve": [
+        { "spoil": 0.0, "value": 0.30 },
+        { "spoil": 0.3, "value": 0.55 },
+        { "spoil": 0.85, "value": 1.20 },
+        { "spoil": 0.95, "value": 1.40 },
+        { "spoil": 1.0, "value": 1.40 }
+      ]
     },
     {
       "requires": ["spoiled"],
