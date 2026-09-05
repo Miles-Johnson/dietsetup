@@ -8,8 +8,10 @@ incompatible with what was eaten, marking it Harmful or Inedible instead.
 ## Installation
 
 Drop the release zip/folder into your `Mods` folder (client and server both — this mod is
-required on both sides; a mismatched install is rejected at connection time, not silently
-ignored). No dependencies beyond vanilla Vintage Story 1.21.0+.
+required on both sides; a mismatched install is rejected at connection time by the game
+engine's own mod-sync check, triggered by this mod's `requiredOnClient`/`requiredOnServer`
+manifest flags, not by any check this mod's own code performs). No dependencies beyond
+vanilla Vintage Story 1.22.0+ and its bundled `survival` mod at 1.22.0+.
 
 Config lives at `ModConfig/dietsetup.json` after first run:
 - `EnableDietSystem` (default `true`) — master on/off switch. When off, every patch is a
@@ -70,12 +72,13 @@ with zero dependency on Diet Setup:
 Only `dietsetup:intake:rot` is written today. The value decays exponentially on an
 in-game calendar-hour half-life (not real time); a reader computes the live value on
 demand from the raw value and the elapsed hours since `updatedHours` — see `rfmechanics`'
-`GoblinRotAuraBehavior.ReadLiveRotIntake` for a worked example. This key shape is a
-public, stable contract: renaming or restructuring it breaks any mod already reading it.
+`GoblinRotAuraBehavior.ReadLiveRotIntake` for a worked example. This is the current key
+shape, not a stability promise — the mod is still on `-pre` tags and this shape may change.
 
-- **Uninstalling is safe.** All per-player state this mod writes is stored as plain
-  string/bool values on the player entity; removing the mod leaves those as inert,
-  harmlessly orphaned data rather than breaking save loading.
+- **Uninstalling is safe.** All per-player state this mod writes — the two `dietsetup:intake:*`
+  doubles above and the `dietsetup:dietOverride` string set by `/dietassignrules` — lives in
+  the player entity's generic attribute tree, which loads unrecognized keys without any
+  schema check; removing the mod just leaves them as unread, harmless data.
 
 ## Reporting issues
 
