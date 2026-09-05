@@ -61,6 +61,12 @@
       "verdict": "nourishing",
       "satietyMult": 1.5,
       "nutritionMult": 1.5
+    },
+    {
+      "requires": ["juice", "liquid"],
+      "priority": 25,
+      "satietyMult": 1.0,
+      "nutritionMult": 1.0
     }
   ]
 }

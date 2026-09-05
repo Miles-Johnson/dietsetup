@@ -31,6 +31,17 @@
       ]
     },
     {
+      "requires": ["juice", "liquid"],
+      "priority": 35,
+      "satietyMult": 1.0,
+      "nutritionCurve": [
+        { "spoil": 0.0, "value": 0.20 },
+        { "spoil": 0.3, "value": 0.35 },
+        { "spoil": 0.85, "value": 1.10 },
+        { "spoil": 1.0, "value": 1.10 }
+      ]
+    },
+    {
       "requires": ["spoiled"],
       "priority": 30,
       "verdict": "nourishing",
